@@ -136,3 +136,4 @@ storage/
 imagenet_pretrained/
 *.csv
 .idea/
+data
