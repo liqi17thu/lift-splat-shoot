@@ -83,6 +83,19 @@ class CamEncode(nn.Module):
 
     def forward(self, x):
         depth, x = self.get_depth_feat(x)
+        B, D, H, W = depth.shape
+
+#        max_prob = 0
+#        for i in range(B):
+#            for j in range(H):
+#                for k in range(W):
+#                    prob = max(depth[i, :, j, k])
+#                    print(f'max()[{i}, :, {j}, {k}] = {prob}')
+#                    max_prob = max(max_prob, prob)
+
+#        print(max_prob)
+
+#        import ipdb; ipdb.set_trace()
 
         return x
 
@@ -149,7 +162,7 @@ class LiftSplatShoot(nn.Module):
 
         # toggle using QuickCumsum vs. autograd
         self.use_quickcumsum = True
-    
+
     def create_frustum(self):
         # make grid in image plane
         ogfH, ogfW = self.data_aug_conf['final_dim']
