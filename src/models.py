@@ -143,6 +143,7 @@ class LiftSplatShoot(nn.Module):
         self.downsample = 16
         self.camC = 64
         self.frustum = self.create_frustum()
+        # D x H/downsample x D/downsample x 3
         self.D, _, _, _ = self.frustum.shape
         self.camencode = CamEncode(self.D, self.camC, self.downsample)
         self.bevencode = BevEncode(inC=self.camC, outC=outC)
@@ -170,7 +171,7 @@ class LiftSplatShoot(nn.Module):
         """
         B, N, _ = trans.shape
 
-        # undo post-transformation
+        # *undo* post-transformation
         # B x N x D x H x W x 3
         points = self.frustum - post_trans.view(B, N, 1, 1, 1, 3)
         points = torch.inverse(post_rots).view(B, N, 1, 1, 1, 3, 3).matmul(points.unsqueeze(-1))
@@ -205,11 +206,11 @@ class LiftSplatShoot(nn.Module):
         x = x.reshape(Nprime, C)
 
         # flatten indices
+        # B x N x D x H/downsample x W/downsample x 3
         geom_feats = ((geom_feats - (self.bx - self.dx/2.)) / self.dx).long()
         geom_feats = geom_feats.view(Nprime, 3)
-        batch_ix = torch.cat([torch.full([Nprime//B, 1], ix,
-                             device=x.device, dtype=torch.long) for ix in range(B)])
-        geom_feats = torch.cat((geom_feats, batch_ix), 1)
+        batch_ix = torch.cat([torch.full([Nprime//B, 1], ix, device=x.device, dtype=torch.long) for ix in range(B)])
+        geom_feats = torch.cat((geom_feats, batch_ix), 1)  # x, y, z, b
 
         # filter out points that are outside box
         kept = (geom_feats[:, 0] >= 0) & (geom_feats[:, 0] < self.nx[0])\
@@ -242,7 +243,9 @@ class LiftSplatShoot(nn.Module):
         return final
 
     def get_voxels(self, x, rots, trans, intrins, post_rots, post_trans):
+        # B x N x D x H/downsample x W/downsample x 3: (x,y,z) locations (in the ego frame)
         geom = self.get_geometry(rots, trans, intrins, post_rots, post_trans)
+        # B x N x D x H/downsample x W/downsample x C: cam feats
         x = self.get_cam_feats(x)
 
         x = self.voxel_pooling(geom, x)
@@ -257,3 +260,42 @@ class LiftSplatShoot(nn.Module):
 
 def compile_model(grid_conf, data_aug_conf, outC):
     return LiftSplatShoot(grid_conf, data_aug_conf, outC)
+
+
+def main():
+    H = 900
+    W = 1600
+    resize_lim = (0.193, 0.225)
+    final_dim = (128, 352)
+    bot_pct_lim = (0.0, 0.22)
+    rot_lim = (-5.4, 5.4)
+    rand_flip = True
+    ncams = 5
+
+    xbound = [-50.0, 50.0, 0.5]
+    ybound = [-50.0, 50.0, 0.5]
+    zbound = [-10.0, 10.0, 20.0]
+    dbound = [4.0, 45.0, 1.0]
+
+    grid_conf = {
+        'xbound': xbound,
+        'ybound': ybound,
+        'zbound': zbound,
+        'dbound': dbound,
+    }
+    data_aug_conf = {
+                    'resize_lim': resize_lim,
+                    'final_dim': final_dim,
+                    'rot_lim': rot_lim,
+                    'H': H, 'W': W,
+                    'rand_flip': rand_flip,
+                    'bot_pct_lim': bot_pct_lim,
+                    'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
+                    'Ncams': ncams,
+                }
+    model = compile_model(grid_conf, data_aug_conf, outC=1)
+
+
+if __name__ == '__main__':
+    main()
