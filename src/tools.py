@@ -131,7 +131,8 @@ def img_transform(img, post_rot, post_tran,
     post_rot *= resize
     post_tran -= torch.Tensor(crop[:2])
     if flip:
-        A = torch.Tensor([[-1, 0], [0, 1]])
+        A = torch.Tensor([[-1, 0],
+                          [0, 1]])
         b = torch.Tensor([crop[2] - crop[0], 0])
         post_rot = A.matmul(post_rot)
         post_tran = A.matmul(post_tran) + b
