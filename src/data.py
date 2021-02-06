@@ -192,6 +192,13 @@ class NuscData(torch.utils.data.Dataset):
 
         return torch.Tensor(img).unsqueeze(0)
 
+    def get_lineimg(self, rec):
+        lidar_top_path = self.nusc.get_sample_data_path(rec['data']['LIDAR_TOP'])
+        line_path = lidar_top_path.split('.')[0] + '_line_mask.png'
+        img = np.array(Image.open(line_path))
+
+        return torch.Tensor(img).unsqueeze(0)
+
     def choose_cams(self):
         if self.is_train and self.data_aug_conf['Ncams'] < len(self.data_aug_conf['cams']):
             cams = np.random.choice(self.data_aug_conf['cams'], self.data_aug_conf['Ncams'],
@@ -218,7 +225,7 @@ class VizData(NuscData):
         cams = self.choose_cams()
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(rec, cams)
         lidar_data = self.get_lidar_data(rec, nsweeps=3)
-        binimg = self.get_binimg(rec)
+        binimg = self.get_lineimg(rec)
         
         return imgs, rots, trans, intrins, post_rots, post_trans, lidar_data, binimg
 
@@ -232,7 +239,7 @@ class SegmentationData(NuscData):
 
         cams = self.choose_cams()
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(rec, cams)
-        binimg = self.get_binimg(rec)
+        binimg = self.get_lineimg(rec)
         
         return imgs, rots, trans, intrins, post_rots, post_trans, binimg
 
