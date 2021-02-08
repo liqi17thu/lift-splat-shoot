@@ -96,7 +96,7 @@ def lidar_check(version,
 
                     plt.sca(final_ax)
                     plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.', label=cams[imgi].replace('_', ' '))
-                
+
                 plt.legend(loc='upper right')
                 final_ax.set_aspect('equal')
                 plt.xlim((-50, 50))
@@ -261,7 +261,7 @@ def viz_model_preds(version,
                     rand_flip=True,
 
                     xbound=[-50.0, 50.0, 0.5],
-                    ybound=[-50.0, 50.0, 0.5],
+                    ybound=[-15.0, 15.0, 0.15],
                     zbound=[-10.0, 10.0, 20.0],
                     dbound=[4.0, 45.0, 1.0],
 
@@ -295,7 +295,7 @@ def viz_model_preds(version,
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
     model = compile_model(grid_conf, data_aug_conf, outC=1)
-    print('loading', modelf)
+    # print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
     model.to(device)
 
@@ -343,12 +343,13 @@ def viz_model_preds(version,
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
                 plt.setp(ax.spines.values(), color='b', linewidth=2)
-                plt.legend(handles=[
-                    mpatches.Patch(color=(0.0, 0.0, 1.0, 1.0), label='Output Vehicle Segmentation'),
-                    mpatches.Patch(color='#76b900', label='Ego Vehicle'),
-                    mpatches.Patch(color=(1.00, 0.50, 0.31, 0.8), label='Map (for visualization purposes only)')
-                ], loc=(0.01, 0.86))
-                plt.imshow(out[si].squeeze(0), vmin=0, vmax=1, cmap='Blues')
+                # plt.legend(handles=[
+                #     mpatches.Patch(color=(0.0, 0.0, 1.0, 1.0), label='Output Vehicle Segmentation'),
+                #     mpatches.Patch(color='#76b900', label='Ego Vehicle'),
+                #     mpatches.Patch(color=(1.00, 0.50, 0.31, 0.8), label='Map (for visualization purposes only)')
+                # ], loc=(0.01, 0.86))
+                plt.imshow(out[si].squeeze(0), vmin=0, vmax=1, cmap='Blues', alpha=0.6)
+                plt.imshow(binimgs[si].squeeze(0), vmin=0, vmax=1, cmap='Reds', alpha=0.6)
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
