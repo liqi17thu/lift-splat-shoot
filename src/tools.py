@@ -7,12 +7,18 @@ Authors: Jonah Philion and Sanja Fidler
 import os
 import numpy as np
 import torch
-import torchvision
 from tqdm import tqdm
 from pyquaternion import Quaternion
 from PIL import Image
 from functools import reduce
+
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.autograd import Variable
+import torchvision
+
 import matplotlib as mpl
+
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 from nuscenes.utils.data_classes import LidarPointCloud
@@ -37,7 +43,7 @@ def get_lidar_data(nusc, sample_rec, nsweeps, min_distance):
 
     # Homogeneous transformation matrix from global to _current_ ego car frame.
     car_from_global = transform_matrix(ref_pose_rec['translation'], Quaternion(ref_pose_rec['rotation']),
-                                        inverse=True)
+                                       inverse=True)
 
     # Aggregate current and previous sweeps.
     sample_data_token = sample_rec['data']['LIDAR_TOP']
@@ -50,7 +56,7 @@ def get_lidar_data(nusc, sample_rec, nsweeps, min_distance):
         # Get past pose.
         current_pose_rec = nusc.get('ego_pose', current_sd_rec['ego_pose_token'])
         global_from_car = transform_matrix(current_pose_rec['translation'],
-                                            Quaternion(current_pose_rec['rotation']), inverse=False)
+                                           Quaternion(current_pose_rec['rotation']), inverse=False)
 
         # Homogeneous transformation matrix from sensor coordinate frame to ego car frame.
         current_cs_rec = nusc.get('calibrated_sensor', current_sd_rec['calibrated_sensor_token'])
@@ -105,9 +111,9 @@ def cam_to_ego(points, rot, trans, intrins):
 def get_only_in_img_mask(pts, H, W):
     """pts should be 3 x N
     """
-    return (pts[2] > 0) &\
-        (pts[0] > 1) & (pts[0] < W - 1) &\
-        (pts[1] > 1) & (pts[1] < H - 1)
+    return (pts[2] > 0) & \
+           (pts[0] > 1) & (pts[0] < W - 1) & \
+           (pts[1] > 1) & (pts[1] < H - 1)
 
 
 def get_rot(h):
@@ -136,7 +142,7 @@ def img_transform(img, post_rot, post_tran,
         b = torch.Tensor([crop[2] - crop[0], 0])
         post_rot = A.matmul(post_rot)
         post_tran = A.matmul(post_tran) + b
-    A = get_rot(rotate/180*np.pi)
+    A = get_rot(rotate / 180 * np.pi)
     b = torch.Tensor([crop[2] - crop[0], crop[3] - crop[1]]) / 2
     b = A.matmul(-b) + b
     post_rot = A.matmul(post_rot)
@@ -159,22 +165,21 @@ class NormalizeInverse(torchvision.transforms.Normalize):
 
 
 denormalize_img = torchvision.transforms.Compose((
-            NormalizeInverse(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
-            torchvision.transforms.ToPILImage(),
-        ))
-
+    NormalizeInverse(mean=[0.485, 0.456, 0.406],
+                     std=[0.229, 0.224, 0.225]),
+    torchvision.transforms.ToPILImage(),
+))
 
 normalize_img = torchvision.transforms.Compose((
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225]),
+    torchvision.transforms.ToTensor(),
+    torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225]),
 ))
 
 
 def gen_dx_bx(xbound, ybound, zbound):
     dx = torch.Tensor([row[2] for row in [xbound, ybound, zbound]])
-    bx = torch.Tensor([row[0] + row[2]/2.0 for row in [xbound, ybound, zbound]])
+    bx = torch.Tensor([row[0] + row[2] / 2.0 for row in [xbound, ybound, zbound]])
     nx = torch.LongTensor([(row[1] - row[0]) / row[2] for row in [xbound, ybound, zbound]])
 
     return dx, bx, nx
@@ -218,6 +223,26 @@ class QuickCumsum(torch.autograd.Function):
         val = gradx[back]
 
         return val, None, None
+
+
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=1, gamma=2, reduce='mean'):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduce = reduce
+
+    def forward(self, inputs, targets):
+        BCE_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduce=False)
+        pt = torch.exp(-BCE_loss)
+        F_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
+
+        if self.reduce == 'mean':
+            return torch.mean(F_loss)
+        elif self.reduce == 'sum':
+            return torch.sum(F_loss)
+        else:
+            raise NotImplementedError
 
 
 class SimpleLoss(torch.nn.Module):
@@ -266,33 +291,33 @@ def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):
 
     model.train()
     return {
-            'loss': total_loss / len(valloader.dataset),
-            'iou': total_intersect / total_union,
-            }
+        'loss': total_loss / len(valloader.dataset),
+        'iou': total_intersect / total_union,
+    }
 
 
 def add_ego(bx, dx):
     # approximate rear axel
     W = 1.85
     pts = np.array([
-        [-4.084/2.+0.5, W/2.],
-        [4.084/2.+0.5, W/2.],
-        [4.084/2.+0.5, -W/2.],
-        [-4.084/2.+0.5, -W/2.],
+        [-4.084 / 2. + 0.5, W / 2.],
+        [4.084 / 2. + 0.5, W / 2.],
+        [4.084 / 2. + 0.5, -W / 2.],
+        [-4.084 / 2. + 0.5, -W / 2.],
     ])
     pts = (pts - bx) / dx
-    pts[:, [0,1]] = pts[:, [1,0]]
+    pts[:, [0, 1]] = pts[:, [1, 0]]
     plt.fill(pts[:, 0], pts[:, 1], '#76b900')
 
 
 def get_nusc_maps(map_folder):
     nusc_maps = {map_name: NuScenesMap(dataroot=map_folder,
-                map_name=map_name) for map_name in [
-                    "singapore-hollandvillage", 
-                    "singapore-queenstown",
-                    "boston-seaport",
-                    "singapore-onenorth",
-                ]}
+                                       map_name=map_name) for map_name in [
+                     "singapore-hollandvillage",
+                     "singapore-queenstown",
+                     "boston-seaport",
+                     "singapore-onenorth",
+                 ]}
     return nusc_maps
 
 
@@ -317,7 +342,7 @@ def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx):
         plt.plot(pts[:, 1], pts[:, 0], c=(0.0, 0.0, 1.0), alpha=0.5)
     for la in lmap['lane_divider']:
         pts = (la - bx) / dx
-        plt.plot(pts[:, 1], pts[:, 0], c=(159./255., 0.0, 1.0), alpha=0.5)
+        plt.plot(pts[:, 1], pts[:, 0], c=(159. / 255., 0.0, 1.0), alpha=0.5)
 
 
 def get_local_map(nmap, center, stretch, layer_names, line_names):
@@ -361,7 +386,7 @@ def get_local_map(nmap, center, stretch, layer_names, line_names):
 
             polys[layer_name].append(
                 np.array([xs, ys]).T
-                )
+            )
 
     # convert to local coordinates in place
     rot = get_rot(np.arctan2(center[3], center[2])).T
