@@ -35,7 +35,8 @@ def train(version,
             logdir='./runs',
 
             xbound=[-50.0, 50.0, 0.5],
-            ybound=[-50.0, 50.0, 0.5],
+            # ybound=[-50.0, 50.0, 0.5],
+            ybound=[-15.0, 15.0, 0.15],
             zbound=[-10.0, 10.0, 20.0],
             dbound=[4.0, 45.0, 1.0],
 

@@ -348,8 +348,8 @@ def viz_model_preds(version,
                 #     mpatches.Patch(color='#76b900', label='Ego Vehicle'),
                 #     mpatches.Patch(color=(1.00, 0.50, 0.31, 0.8), label='Map (for visualization purposes only)')
                 # ], loc=(0.01, 0.86))
-                plt.imshow(out[si].squeeze(0), vmin=0, vmax=1, cmap='Blues', alpha=0.6)
                 plt.imshow(binimgs[si].squeeze(0), vmin=0, vmax=1, cmap='Reds', alpha=0.6)
+                plt.imshow(out[si].squeeze(0), vmin=0, vmax=1, cmap='Blues', alpha=0.6)
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
