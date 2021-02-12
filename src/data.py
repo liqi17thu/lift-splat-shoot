@@ -15,12 +15,16 @@ from nuscenes.utils.splits import create_splits_scenes
 from nuscenes.utils.data_classes import Box
 from glob import glob
 
+from .topdown_mask import gen_topdown_mask, MyNuScenesMap
 from .tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx
+
+MAP = ['boston-seaport', 'singapore-hollandvillage', 'singapore-onenorth', 'singapore-queenstown']
 
 
 class NuscData(torch.utils.data.Dataset):
-    def __init__(self, nusc, is_train, data_aug_conf, grid_conf):
+    def __init__(self, nusc, nusc_maps, is_train, data_aug_conf, grid_conf):
         self.nusc = nusc
+        self.nusc_maps = nusc_maps
         self.is_train = is_train
         self.data_aug_conf = data_aug_conf
         self.grid_conf = grid_conf
@@ -68,7 +72,6 @@ class NuscData(torch.utils.data.Dataset):
             for rec in self.nusc.sample_data:
                 if rec['channel'] == 'LIDAR_TOP' or (rec['is_key_frame'] and rec['channel'] in self.data_aug_conf['cams']):
                     rec['filename'] = info[rec['filename']]
-
     
     def get_scenes(self):
         # filter by scene split
@@ -193,11 +196,25 @@ class NuscData(torch.utils.data.Dataset):
         return torch.Tensor(img).unsqueeze(0)
 
     def get_lineimg(self, rec):
-        lidar_top_path = self.nusc.get_sample_data_path(rec['data']['LIDAR_TOP'])
-        line_path = lidar_top_path.split('.')[0] + '_line_mask.png'
-        img = np.array(Image.open(line_path))
+        patch_size = (100, 30)
+        canvas_size = (200, 200)
+        seg_layers = ['lane_border', 'road_block_border', 'road_divider', 'lane_divider']
+        mask = gen_topdown_mask(self.nusc, self.nusc_maps, rec, patch_size, canvas_size, seg_layers)
 
-        return torch.Tensor(img).unsqueeze(0)
+        # one class classifier
+        # mask = 1 - mask[0]
+
+        # border and divider
+        mask[1] = np.any([mask[1], mask[2]], 0)
+        mask[2] = np.any([mask[3], mask[4]], 0)
+        mask = mask[:3]
+
+        return torch.Tensor(mask)
+
+        # lidar_top_path = self.nusc.get_sample_data_path(rec['data']['LIDAR_TOP'])
+        # line_path = lidar_top_path.split('.')[0] + '_line_mask.png'
+        # img = np.array(Image.open(line_path))
+        # return torch.Tensor(img).unsqueeze(0)
 
     def choose_cams(self):
         if self.is_train and self.data_aug_conf['Ncams'] < len(self.data_aug_conf['cams']):
@@ -253,13 +270,17 @@ def compile_data(version, dataroot, data_aug_conf, grid_conf, bsz,
     nusc = NuScenes(version='v1.0-{}'.format(version),
                     dataroot=dataroot,
                     verbose=False)
+    nusc_maps = {}
+    for map_name in MAP:
+        nusc_maps[map_name] = MyNuScenesMap(dataroot=dataroot, map_name=map_name)
+
     parser = {
         'vizdata': VizData,
         'segmentationdata': SegmentationData,
     }[parser_name]
-    traindata = parser(nusc, is_train=True, data_aug_conf=data_aug_conf,
+    traindata = parser(nusc, nusc_maps, is_train=True, data_aug_conf=data_aug_conf,
                          grid_conf=grid_conf)
-    valdata = parser(nusc, is_train=False, data_aug_conf=data_aug_conf,
+    valdata = parser(nusc, nusc_maps, is_train=False, data_aug_conf=data_aug_conf,
                        grid_conf=grid_conf)
 
     trainloader = torch.utils.data.DataLoader(traindata, batch_size=bsz,
