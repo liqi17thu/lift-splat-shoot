@@ -38,32 +38,33 @@ def write_log(writer, loss, ious, acces, precs, recalls, title, counter):
 
 
 def train(version,
-            dataroot='/data/nuscenes',
-            nepochs=30,
-            gpuid=1,
+          dataroot='/data/nuscenes',
+          nepochs=30,
+          gpuid=1,
+          outC=3,
 
-            H=900, W=1600,
-            resize_lim=(0.193, 0.225),
-            final_dim=(128, 352),
-            bot_pct_lim=(0.0, 0.22),
-            rot_lim=(-5.4, 5.4),
-            rand_flip=True,
-            ncams=5,
-            max_grad_norm=5.0,
-            pos_weight=2.13,
-            logdir='./runs',
+          H=900, W=1600,
+          resize_lim=(0.193, 0.225),
+          final_dim=(128, 352),
+          bot_pct_lim=(0.0, 0.22),
+          rot_lim=(-5.4, 5.4),
+          rand_flip=True,
+          ncams=5,
+          max_grad_norm=5.0,
+          pos_weight=2.13,
+          logdir='./runs',
 
-            xbound=[-50.0, 50.0, 0.5],
-            # ybound=[-50.0, 50.0, 0.5],
-            ybound=[-15.0, 15.0, 0.15],
-            zbound=[-10.0, 10.0, 20.0],
-            dbound=[4.0, 45.0, 1.0],
+          xbound=[-50.0, 50.0, 0.5],
+          # ybound=[-50.0, 50.0, 0.5],
+          ybound=[-15.0, 15.0, 0.15],
+          zbound=[-10.0, 10.0, 20.0],
+          dbound=[4.0, 45.0, 1.0],
 
-            bsz=4,
-            nworkers=10,
-            lr=1e-3,
-            weight_decay=1e-7,
-            ):
+          bsz=4,
+          nworkers=10,
+          lr=1e-3,
+          weight_decay=1e-7,
+          ):
     grid_conf = {
         'xbound': xbound,
         'ybound': ybound,
@@ -87,7 +88,7 @@ def train(version,
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
-    model = compile_model(grid_conf, data_aug_conf, outC=3)
+    model = compile_model(grid_conf, data_aug_conf, outC=outC)
     model.to(device)
 
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)

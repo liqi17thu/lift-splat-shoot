@@ -195,6 +195,7 @@ def eval_model(version,
                 modelf,
                 dataroot='/data/nuscenes',
                 gpuid=1,
+                outC=3,
 
                 H=900, W=1600,
                 resize_lim=(0.193, 0.225),
@@ -234,7 +235,7 @@ def eval_model(version,
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
+    model = compile_model(grid_conf, data_aug_conf, outC=outC)
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
     model.to(device)

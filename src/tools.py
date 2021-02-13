@@ -280,8 +280,7 @@ def get_accuracy_precision_recall(preds, binimgs):
 
 def onehot_encoding(logits, dim=1):
     max_idx = torch.argmax(logits, dim, keepdim=True)
-    one_hot = torch.FloatTensor(logits.shape)
-    one_hot.zero_()
+    one_hot = logits.new_full(logits.shape, 0)
     one_hot.scatter_(dim, max_idx, 1)
     return one_hot
 
@@ -290,11 +289,13 @@ def get_batch_iou_multi_class(preds, binimgs):
     intersects = []
     unions = []
     with torch.no_grad():
-        preds = onehot_encoding(preds)
-        tgt = binimgs.bool()
+        preds = onehot_encoding(preds).bool()
+        tgts = binimgs.bool()
         for i in range(preds.shape[1]):
-            intersect = (preds[:, i] & tgt[:, i]).sum().float().item()
-            union = (preds[:, i] | tgt[:, i]).sum().float().item()
+            pred = preds[:, i]
+            tgt = tgts[:, i]
+            intersect = (pred & tgt).sum().float().item()
+            union = (pred | tgt).sum().float().item()
             intersects.append(intersect)
             unions.append(union)
     intersects = np.array(intersects)
@@ -309,14 +310,16 @@ def get_accuracy_precision_recall_multi_class(preds, binimgs):
     fps = []
     fns = []
     with torch.no_grad():
-        preds = onehot_encoding(preds)
-        tgt = binimgs.bool()
+        preds = onehot_encoding(preds).bool()
+        tgts = binimgs.bool()
         for i in range(preds.shape[1]):
-            tot = preds.shape.numel()
-            cor = (preds == tgt).sum().float().item()
-            tp = (preds & tgt).sum().float().item()
-            fp = (preds & ~tgt).sum().float().item()
-            fn = (~preds & tgt).sum().float().item()
+            pred = preds[:, i]
+            tgt = tgts[:, i]
+            tot = pred.shape.numel()
+            cor = (pred == tgt).sum().float().item()
+            tp = (pred & tgt).sum().float().item()
+            fp = (pred & ~tgt).sum().float().item()
+            fn = (~pred & tgt).sum().float().item()
 
             tots.append(tot)
             cors.append(cor)
@@ -329,7 +332,7 @@ def get_accuracy_precision_recall_multi_class(preds, binimgs):
     tps = np.array(tps)
     fps = np.array(fps)
     fns = np.array(fns)
-    return tots, cors, tps, fps, fns, cors / tots, tps / (tps + fps), tps / (tps + fns)
+    return tots, cors, tps, fps, fns, cors / tots, tps / (tps + fps + 1e-7), tps / (tps + fns + 1e-7)
 
 
 def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):

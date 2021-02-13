@@ -204,7 +204,6 @@ class NuscData(torch.utils.data.Dataset):
 
         mask = gen_topdown_mask(self.nusc, self.nusc_maps, rec, patch_size, canvas_size, seg_layers)
 
-
         # contours
         contours_mask = np.zeros(canvas_size)
         lane_mask = np.any(mask[:2], 0).astype('uint8') * 255
