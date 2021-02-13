@@ -266,11 +266,28 @@ def get_batch_iou(preds, binimgs):
     return intersect, union, intersect / union if (union > 0) else 1.0
 
 
+def get_accuracy_precision_recall(preds, binimgs):
+    with torch.no_grad():
+        preds = (preds > 0)
+        tgt = binimgs.bool()
+        tot = preds.shape.numel()
+        cor = (preds == tgt).sum().float().item()
+        tp = (preds & tgt).sum().float().item()
+        fp = (preds & ~tgt).sum().float().item()
+        fn = (~preds & tgt).sum().float().item()
+    return tot, cor, tp, fp, fn
+
+
 def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):
     model.eval()
     total_loss = 0.0
     total_intersect = 0.0
     total_union = 0
+    total_pix = 0
+    total_cor = 0
+    total_tp = 0
+    total_fp = 0
+    total_fn = 0
     print('running eval...')
     loader = tqdm(valloader) if use_tqdm else valloader
     with torch.no_grad():
@@ -286,13 +303,21 @@ def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):
 
             # iou
             intersect, union, _ = get_batch_iou(preds, binimgs)
+            tot, cor, tp, fp, fn = get_accuracy_precision_recall(preds, binimgs)
             total_intersect += intersect
             total_union += union
-
+            total_pix += tot
+            total_cor += cor
+            total_tp += tp
+            total_fp += fp
+            total_fn += fn
     model.train()
     return {
         'loss': total_loss / len(valloader.dataset),
         'iou': total_intersect / total_union,
+        'accuracy': total_cor / total_pix,
+        'precision': total_tp / (total_tp + total_fp),
+        'recall': total_tp / (total_tp + total_fn)
     }
 
 
