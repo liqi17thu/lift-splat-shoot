@@ -19,6 +19,8 @@ from .topdown_mask import gen_topdown_mask, MyNuScenesMap
 from .tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx
 
 MAP = ['boston-seaport', 'singapore-hollandvillage', 'singapore-onenorth', 'singapore-queenstown']
+LINE_WIDTH = 5
+ONE_CLASS = False
 
 
 class NuscData(torch.utils.data.Dataset):
@@ -198,18 +200,23 @@ class NuscData(torch.utils.data.Dataset):
     def get_lineimg(self, rec):
         patch_size = (100, 30)
         canvas_size = (200, 200)
-        seg_layers = ['lane_border', 'road_block_border', 'road_divider', 'lane_divider']
+        seg_layers = ['lane', 'road_segment', 'road_divider', 'lane_divider']
+
         mask = gen_topdown_mask(self.nusc, self.nusc_maps, rec, patch_size, canvas_size, seg_layers)
 
-        # one class classifier
-        # mask = 1 - mask[0]
+        # contours
+        contours_mask = np.zeros(canvas_size)
+        lane_mask = np.any(mask[:2], 0).astype('uint8') * 255
+        ret, thresh = cv2.threshold(lane_mask, 127, 255, 0)
+        contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(contours_mask, contours, -1, 1, LINE_WIDTH)
 
-        # border and divider
-        mask[1] = np.any([mask[1], mask[2]], 0)
-        mask[2] = np.any([mask[3], mask[4]], 0)
-        mask = mask[:3]
+        # dividers
+        dividers_mask = np.any(mask[2:])
 
-        return torch.Tensor(mask)
+        # final
+        final_mask = np.stack([contours_mask, dividers_mask])
+        return torch.Tensor(final_mask)
 
         # lidar_top_path = self.nusc.get_sample_data_path(rec['data']['LIDAR_TOP'])
         # line_path = lidar_top_path.split('.')[0] + '_line_mask.png'
