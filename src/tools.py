@@ -278,16 +278,70 @@ def get_accuracy_precision_recall(preds, binimgs):
     return tot, cor, tp, fp, fn
 
 
+def onehot_encoding(logits, dim=1):
+    max_idx = torch.argmax(logits, dim, keepdim=True)
+    one_hot = torch.FloatTensor(logits.shape)
+    one_hot.zero_()
+    one_hot.scatter_(dim, max_idx, 1)
+    return one_hot
+
+
+def get_batch_iou_multi_class(preds, binimgs):
+    intersects = []
+    unions = []
+    with torch.no_grad():
+        preds = onehot_encoding(preds)
+        tgt = binimgs.bool()
+        for i in range(preds.shape[1]):
+            intersect = (preds[:, i] & tgt[:, i]).sum().float().item()
+            union = (preds[:, i] | tgt[:, i]).sum().float().item()
+            intersects.append(intersect)
+            unions.append(union)
+    intersects = np.array(intersects)
+    unions = np.array(unions)
+    return intersects, unions, intersects / (unions + 1e-7)
+
+
+def get_accuracy_precision_recall_multi_class(preds, binimgs):
+    tots = []
+    cors = []
+    tps = []
+    fps = []
+    fns = []
+    with torch.no_grad():
+        preds = onehot_encoding(preds)
+        tgt = binimgs.bool()
+        for i in range(preds.shape[1]):
+            tot = preds.shape.numel()
+            cor = (preds == tgt).sum().float().item()
+            tp = (preds & tgt).sum().float().item()
+            fp = (preds & ~tgt).sum().float().item()
+            fn = (~preds & tgt).sum().float().item()
+
+            tots.append(tot)
+            cors.append(cor)
+            tps.append(tp)
+            fps.append(fp)
+            fns.append(fn)
+
+    tots = np.array(tots)
+    cors = np.array(cors)
+    tps = np.array(tps)
+    fps = np.array(fps)
+    fns = np.array(fns)
+    return tots, cors, tps, fps, fns, cors / tots, tps / (tps + fps), tps / (tps + fns)
+
+
 def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):
     model.eval()
     total_loss = 0.0
-    total_intersect = 0.0
-    total_union = 0
-    total_pix = 0
-    total_cor = 0
-    total_tp = 0
-    total_fp = 0
-    total_fn = 0
+    total_intersect = None
+    total_union = None
+    total_pix = None
+    total_cor = None
+    total_tp = None
+    total_fp = None
+    total_fn = None
     print('running eval...')
     loader = tqdm(valloader) if use_tqdm else valloader
     with torch.no_grad():
@@ -302,15 +356,26 @@ def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):
             total_loss += loss_fn(preds, binimgs).item() * preds.shape[0]
 
             # iou
-            intersect, union, _ = get_batch_iou(preds, binimgs)
-            tot, cor, tp, fp, fn = get_accuracy_precision_recall(preds, binimgs)
-            total_intersect += intersect
-            total_union += union
-            total_pix += tot
-            total_cor += cor
-            total_tp += tp
-            total_fp += fp
-            total_fn += fn
+            intersect, union, _ = get_batch_iou_multi_class(preds, binimgs)
+            tot, cor, tp, fp, fn, _, _, _ = get_accuracy_precision_recall_multi_class(preds, binimgs)
+
+            if total_intersect is None:
+                total_intersect = intersect
+                total_union = union
+                total_pix = tot
+                total_cor = cor
+                total_tp = tp
+                total_fp = fp
+                total_fn = fn
+            else:
+                total_intersect += intersect
+                total_union += union
+                total_pix += tot
+                total_cor += cor
+                total_tp += tp
+                total_fp += fp
+                total_fn += fn
+
     model.train()
     return {
         'loss': total_loss / len(valloader.dataset),

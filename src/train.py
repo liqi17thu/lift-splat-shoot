@@ -14,8 +14,26 @@ from torch.optim.lr_scheduler import StepLR
 
 from .models import compile_model
 from .data import compile_data
-from .tools import get_batch_iou, get_val_info
+from .tools import get_batch_iou, get_batch_iou_multi_class, get_val_info
+from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss
+
+
+def write_log(writer, loss, ious, acces, precs, recalls, title, counter):
+    writer.add_scalar(f'{title}/loss', loss, counter)
+    writer.add_scalar(f'{title}/iou', np.mean(ious), counter)
+    writer.add_scalar(f'{title}/acc', np.mean(acces), counter)
+    writer.add_scalar(f'{title}/prec', np.mean(precs), counter)
+    writer.add_scalar(f'{title}/recall', np.mean(recalls), counter)
+
+    for i, iou in enumerate(ious):
+        writer.add_scalar(f'{title}/class_{i}/iou', iou, counter)
+    for i, acc in enumerate(acces):
+        writer.add_scalar(f'{title}/class_{i}/acc', acc, counter)
+    for i, prec in enumerate(precs):
+        writer.add_scalar(f'{title}/class_{i}/prec', prec, counter)
+    for i, recall in enumerate(recalls):
+        writer.add_scalar(f'{title}/class_{i}/recall', recall, counter)
 
 
 def train(version,
@@ -105,16 +123,14 @@ def train(version,
                 writer.add_scalar('train/loss', loss, counter)
 
             if counter % 50 == 0:
-                _, _, iou = get_batch_iou(preds, binimgs)
-                writer.add_scalar('train/iou', iou, counter)
-                writer.add_scalar('train/epoch', epoch, counter)
-                writer.add_scalar('train/step_time', t1 - t0, counter)
+                _, _, ious = get_batch_iou_multi_class(preds, binimgs)
+                _, _, _, _, _, acces, precs, recalls = get_accuracy_precision_recall_multi_class(preds, binimgs)
+                write_log(writer, loss, ious, acces, precs, recalls, 'train', counter)
 
             if counter % val_step == 0:
                 val_info = get_val_info(model, valloader, loss_fn, device)
                 print('VAL', val_info)
-                writer.add_scalar('val/loss', val_info['loss'], counter)
-                writer.add_scalar('val/iou', val_info['iou'], counter)
+                write_log(writer, val_info['loss'], val_info['iou'], val_info['accuracy'], val_info['precision'], val_info['recall'], 'val', counter)
 
             if counter % val_step == 0:
                 model.eval()
