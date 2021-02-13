@@ -10,6 +10,8 @@ from pyquaternion import Quaternion
 from shapely import affinity
 from shapely.geometry import LineString
 
+from .data import LINE_WIDTH
+
 
 def pickone_and_reorder(node1, node2, dist, node_num):
     if len(node1) == 2 and len(node2) == 2:
@@ -104,11 +106,11 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
             for line in lines:
                 coords = np.asarray(list(line.coords), np.int32)
                 coords = coords.reshape((-1, 2))
-                cv2.polylines(mask, [coords], False, 1, 5)
+                cv2.polylines(mask, [coords], False, 1, LINE_WIDTH)
         else:
             coords = np.asarray(list(lines.coords), np.int32)
             coords = coords.reshape((-1, 2))
-            cv2.polylines(mask, [coords], False, 1, 5)
+            cv2.polylines(mask, [coords], False, 1, LINE_WIDTH)
 
         return mask
 
@@ -196,7 +198,4 @@ def gen_topdown_mask(nuscene, nusc_maps, sample_record, patch_size, canvas_size,
     location = log_record['location']
     topdown_seg_mask = nusc_maps[location].get_map_mask(patch_box, patch_angle, seg_layers, canvas_size)
     topdown_seg_mask = np.flip(topdown_seg_mask, 1)  # left-right correction
-    background_mask = (1 - np.any(topdown_seg_mask, 0))[None]
-    topdown_seg_mask = np.concatenate([background_mask, topdown_seg_mask])
-
     return topdown_seg_mask
