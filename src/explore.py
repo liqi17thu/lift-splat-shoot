@@ -191,7 +191,7 @@ def cumsum_check(version,
         print()
 
 
-def eval_model_iou(version,
+def eval_model(version,
                 modelf,
                 dataroot='/data/nuscenes',
                 gpuid=1,
