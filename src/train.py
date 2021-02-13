@@ -15,7 +15,7 @@ from torch.optim.lr_scheduler import StepLR
 from .models import compile_model
 from .data import compile_data
 from .tools import get_batch_iou, get_val_info
-from .tools import FocalLoss
+from .tools import FocalLoss, SimpleLoss
 
 
 def train(version,
@@ -68,13 +68,14 @@ def train(version,
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
+    model = compile_model(grid_conf, data_aug_conf, outC=3)
     model.to(device)
 
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     sched = StepLR(opt, 10, 0.1)
 
-    loss_fn = FocalLoss(alpha=.25, gamma=2.).cuda(gpuid)
+    # loss_fn = FocalLoss(alpha=.25, gamma=2.).cuda(gpuid)
+    loss_fn = SimpleLoss(pos_weight).cuda(gpuid)
 
     writer = SummaryWriter(logdir=logdir)
     val_step = 1000 if version == 'mini' else 10000

@@ -17,4 +17,5 @@ if __name__ == '__main__':
         'train': src.train.train,
         'eval_model_iou': src.explore.eval_model_iou,
         'viz_model_preds': src.explore.viz_model_preds,
+        'viz_model_preds_class3': src.explore.viz_model_preds_class3,
     })
