@@ -22,10 +22,10 @@ from .tools import FocalLoss, SimpleLoss
 
 def write_log(writer, loss, ious, acces, precs, recalls, title, counter):
     writer.add_scalar(f'{title}/loss', loss, counter)
-    writer.add_scalar(f'{title}/iou', np.mean(ious), counter)
-    writer.add_scalar(f'{title}/acc', np.mean(acces), counter)
-    writer.add_scalar(f'{title}/prec', np.mean(precs), counter)
-    writer.add_scalar(f'{title}/recall', np.mean(recalls), counter)
+    writer.add_scalar(f'{title}/iou', np.mean(ious[1:]), counter)
+    writer.add_scalar(f'{title}/acc', np.mean(acces[1:]), counter)
+    writer.add_scalar(f'{title}/prec', np.mean(precs[1:]), counter)
+    writer.add_scalar(f'{title}/recall', np.mean(recalls[1:]), counter)
 
     for i, iou in enumerate(ious):
         writer.add_scalar(f'{title}/class_{i}/iou', iou, counter)
