@@ -5,6 +5,7 @@ Authors: Jonah Philion and Sanja Fidler
 """
 
 import torch
+import numpy as np
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
@@ -245,6 +246,10 @@ def eval_model(version,
     model.eval()
     val_info = get_val_info(model, valloader, loss_fn, device)
     print(val_info)
+    print(np.mean(val_info['iou'][1:]))
+    print(np.mean(val_info['accuracy'][1:]))
+    print(np.mean(val_info['precision'][1:]))
+    print(np.mean(val_info['recall'][1:]))
 
 
 def viz_model_preds(version,
