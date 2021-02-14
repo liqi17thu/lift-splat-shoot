@@ -199,7 +199,7 @@ class NuscData(torch.utils.data.Dataset):
 
     def get_lineimg(self, rec):
         patch_size = (100, 30)
-        canvas_size = (200, 200)
+        canvas_size = (400, 400)
         seg_layers = ['lane', 'road_segment', 'road_divider', 'lane_divider']
 
         mask = gen_topdown_mask(self.nusc, self.nusc_maps, rec, patch_size, canvas_size, seg_layers)
