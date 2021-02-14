@@ -474,8 +474,8 @@ def viz_model_preds_class3(version,
 
                 import numpy as np
                 binimgs[binimgs < 0.1] = np.nan
-                plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.8)
-                plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.8)
+                plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
 
                 # plt.imshow(out[si].transpose(0, -1), vmin=0, vmax=1, cmap='Blues', alpha=0.6)
 
