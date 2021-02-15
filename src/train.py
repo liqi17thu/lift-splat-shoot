@@ -18,7 +18,7 @@ from .tools import get_batch_iou, get_val_info
 from .tools import get_batch_iou_multi_class, get_val_info
 from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss, SimpleLoss
-
+from .hd_models import HDMapNet
 
 def write_log(writer, loss, ious, acces, precs, recalls, title, counter):
     writer.add_scalar(f'{title}/loss', loss, counter)
@@ -88,7 +88,8 @@ def train(version,
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
-    model = compile_model(grid_conf, data_aug_conf, outC=outC)
+    model = HDMapNet(xbound, ybound, outC=outC)
+    # model = compile_model(grid_conf, data_aug_conf, outC=outC)
     model.to(device)
 
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
