@@ -385,8 +385,8 @@ def viz_model_preds_class3(version,
                             rot_lim=(-5.4, 5.4),
                             rand_flip=True,
 
-                            xbound=[-15.0, 15.0, 0.15],
-                            ybound=[-30.0, 30.0, 0.15],
+                            xbound=[-30.0, 30.0, 0.15],
+                            ybound=[-15.0, 15.0, 0.15],
                             zbound=[-10.0, 10.0, 20.0],
                             dbound=[4.0, 45.0, 1.0],
 
@@ -488,8 +488,8 @@ def viz_model_preds_class3(version,
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
                 # TODO: check this hack
-                dx[[0, 1]] = dx[[1, 0]]
-                bx[[0, 1]] = bx[[1, 0]]
+                # dx[[0, 1]] = dx[[1, 0]]
+                # bx[[0, 1]] = bx[[1, 0]]
                 plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
                 plt.xlim((binimgs.shape[3], 0))
                 plt.ylim((0, binimgs.shape[2]))

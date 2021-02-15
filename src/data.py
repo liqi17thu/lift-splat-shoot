@@ -36,10 +36,10 @@ class NuscData(torch.utils.data.Dataset):
 
         dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
         self.dx, self.bx, self.nx = dx.numpy(), bx.numpy(), nx.numpy()
-        patch_h = grid_conf['ybound'][1] - grid_conf['ybound'][0]
-        patch_w = grid_conf['xbound'][1] - grid_conf['xbound'][0]
-        canvas_h = int(patch_h / grid_conf['ybound'][2])
-        canvas_w = int(patch_w / grid_conf['xbound'][2])
+        patch_h = grid_conf['xbound'][1] - grid_conf['xbound'][0]
+        patch_w = grid_conf['ybound'][1] - grid_conf['ybound'][0]
+        canvas_h = int(patch_h / grid_conf['xbound'][2])
+        canvas_w = int(patch_w / grid_conf['ybound'][2])
         self.patch_size = (patch_h, patch_w)
         self.canvas_size = (canvas_h, canvas_w)
 

@@ -11,7 +11,7 @@ from shapely import affinity
 from shapely.geometry import LineString
 
 
-LINE_WIDTH = 2
+LINE_WIDTH = 5
 
 def pickone_and_reorder(node1, node2, dist, node_num):
     if len(node1) == 2 and len(node2) == 2:
