@@ -49,7 +49,7 @@ def train(version,
           bot_pct_lim=(0.0, 0.22),
           rot_lim=(-5.4, 5.4),
           rand_flip=True,
-          ncams=5,
+          ncams=6,
           max_grad_norm=5.0,
           pos_weight=2.13,
           logdir='./runs',
@@ -87,7 +87,7 @@ def train(version,
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
-    model = HDMapNet(xbound, ybound, outC=outC)
+    model = HDMapNet(ybound, xbound, outC=outC)
     # model = compile_model(grid_conf, data_aug_conf, outC=outC)
     model.to(device)
 
@@ -130,6 +130,7 @@ def train(version,
                 _, _, ious = get_batch_iou_multi_class(preds, binimgs)
                 _, _, _, _, _, acces, precs, recalls = get_accuracy_precision_recall_multi_class(preds, binimgs)
                 write_log(writer, loss, ious, acces, precs, recalls, 'train', counter)
+                writer.add_scalar('train/step_time', t1 - t0, counter)
 
             if counter % val_step == 0:
                 val_info = get_val_info(model, valloader, loss_fn, device)

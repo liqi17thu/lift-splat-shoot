@@ -37,8 +37,7 @@ class CamEncode(nn.Module):
 
         self.trunk = EfficientNet.from_pretrained("efficientnet-b0")
 
-        self.up1 = Up(320+112, 512)
-        self.depthnet = nn.Conv2d(512, self.C, kernel_size=1, padding=0)
+        self.up1 = Up(320+112, self.C)
 
     def get_eff_depth(self, x):
         # adapted from https://github.com/lukemelas/EfficientNet-PyTorch/blob/master/efficientnet_pytorch/model.py#L231
@@ -111,6 +110,7 @@ class HDMapNet(nn.Module):
         super(HDMapNet, self).__init__()
         self.xbound = xbound
         self.ybound = ybound
+        self.camC = camC
         self.downsample = 16
 
         self.camencode = CamEncode(camC)
@@ -123,32 +123,33 @@ class HDMapNet(nn.Module):
 
         x = x.view(B*N, C, imH, imW)
         x = self.camencode(x)
-        x = x.view(B, N, self.camC, self.D, imH//self.downsample, imW//self.downsample)
-        x = x.permute(0, 1, 3, 4, 5, 2)
+        x = x.view(B, N, self.camC, imH//self.downsample, imW//self.downsample)
         return x
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans):
-        cam_feats = self.get_cam_feats(x)
+        x = self.get_cam_feats(x)
 
-        Ks = intrins
-        B, N, _, _ = trans.shape
-        RTs = np.zeros((B, N, 4, 4))
-        RTs[:, :, :3, :3] = rots
-        RTs[:, :, :3, 3] = trans
-        RTs[:, :, 3, 3] = 1
+        B, N, _, _ = intrins.shape
+        Ks = np.ones((B, N, 4, 4))
+        Ks[:, :, :3, :3] = intrins.cpu().numpy()
 
-        post_RTs = np.zeros((B, N, 4, 4))
-        RTs[:, :, :3, :3] = post_rots
-        RTs[:, :, :3, 3] = post_trans
-        RTs[:, :, 3, 3] = 1
+        RTs = np.ones((B, N, 4, 4))
+        RTs[:, :, :3, :3] = rots.cpu().numpy()
+        RTs[:, :, :3, 3] = trans.cpu().numpy()
+
+        post_RTs = np.ones((B, N, 4, 4))
+        RTs[:, :, :3, :3] = post_rots.cpu().numpy()
+        RTs[:, :, :3, 3] = post_trans.cpu().numpy()
 
         scale = np.array([
-            [1/16, 0, 0, 0],
-            [0, 1/16, 0, 0],
+            [1/self.downsample, 0, 0, 0],
+            [0, 1/self.downsample, 0, 0],
             [0, 0, 1, 0],
             [0, 0, 0, 1]
         ])
 
         post_RTs = scale @ post_RTs
-        bev_feat = IPM(cam_feats, Ks, RTs, self.xbound, self.ybound, post_RTs)
-        return self.bevencode(bev_feat)
+        x = x.permute(0, 1, 3, 4, 2)
+        x = IPM(x, Ks, RTs, self.xbound, self.ybound, post_RTs)
+        x = x.permute(0, 3, 1, 2)
+        return self.bevencode(x)
