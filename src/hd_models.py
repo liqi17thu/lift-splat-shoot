@@ -131,27 +131,26 @@ class HDMapNet(nn.Module):
         x = self.get_cam_feats(x)
 
         B, N, _, _ = intrins.shape
-        Ks = np.ones((B, N, 4, 4))
-        Ks[:, :, :3, :3] = intrins.cpu().numpy()
+        Ks = torch.ones((B, N, 4, 4), device=intrins.device)
+        Ks[:, :, :3, :3] = intrins
 
-        RTs = np.ones((B, N, 4, 4))
-        RTs[:, :, :3, :3] = rots.cpu().numpy()
-        RTs[:, :, :3, 3] = trans.cpu().numpy()
+        RTs = torch.ones((B, N, 4, 4), device=rots.device)
+        RTs[:, :, :3, :3] = rots
+        RTs[:, :, :3, 3] = trans
 
-        post_RTs = np.ones((B, N, 4, 4))
-        RTs[:, :, :3, :3] = post_rots.cpu().numpy()
-        RTs[:, :, :3, 3] = post_trans.cpu().numpy()
+        post_RTs = torch.ones((B, N, 4, 4), device=post_rots.device)
+        RTs[:, :, :3, :3] = post_rots
+        RTs[:, :, :3, 3] = post_trans
 
-        scale = np.array([
+        scale = torch.Tensor([
             [1/self.downsample, 0, 0, 0],
             [0, 1/self.downsample, 0, 0],
             [0, 0, 1, 0],
             [0, 0, 0, 1]
-        ])
+        ]).cuda()
 
         post_RTs = scale @ post_RTs
         x = x.permute(0, 1, 3, 4, 2)
         x = self.ipm(x, Ks, RTs, post_RTs)
-        x = IPM(x, Ks, RTs, self.xbound, self.ybound, post_RTs)
         x = x.permute(0, 3, 1, 2)
         return self.bevencode(x)

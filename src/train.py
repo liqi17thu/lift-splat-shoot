@@ -123,7 +123,7 @@ def train(version,
             t1 = time()
 
             if counter % 10 == 0:
-                print(counter, loss.item())
+                print(counter, loss.item(), t1 - t0)
                 writer.add_scalar('train/loss', loss, counter)
 
             if counter % 50 == 0:

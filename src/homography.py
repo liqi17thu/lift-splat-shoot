@@ -61,8 +61,12 @@ def perspective(cam_coords, proj_mat, h, w):
     N, _, _ = pix_coords.shape
 
     pix_coords = pix_coords[:, :2, :] / (pix_coords[:, 2, :][:, None, :] + eps)
-    pix_coords = np.reshape(pix_coords, (N, 2, h, w))
-    pix_coords = np.transpose(pix_coords, (0, 2, 3, 1))
+    if isinstance(pix_coords, torch.Tensor):
+        pix_coords = pix_coords.view(N, 2, h, w)
+        pix_coords = pix_coords.permute(0, 2, 3, 1)
+    else:
+        pix_coords = np.reshape(pix_coords, (N, 2, h, w))
+        pix_coords = np.transpose(pix_coords, (0, 2, 3, 1))
     return pix_coords
 
 
@@ -79,25 +83,42 @@ def bilinear_sampler(imgs, pix_coords):
     B, pix_h, pix_w, pix_c = pix_coords.shape
     out_shape = (B, pix_h, pix_w, img_c)
 
-    pix_x, pix_y = np.split(pix_coords, [1], axis=-1)  # [B, pix_h, pix_w, 1]
+    if isinstance(pix_coords, torch.Tensor):
+        pix_x, pix_y = torch.split(pix_coords, 1, dim=-1)  # [B, pix_h, pix_w, 1]
+    else:
+        pix_x, pix_y = np.split(pix_coords, [1], axis=-1)  # [B, pix_h, pix_w, 1]
     # pix_x = pix_x.astype(np.float32)
     # pix_y = pix_y.astype(np.float32)
 
     # Rounding
-    pix_x0 = np.floor(pix_x)
-    pix_x1 = pix_x0 + 1
-    pix_y0 = np.floor(pix_y)
-    pix_y1 = pix_y0 + 1
+    if isinstance(pix_x, torch.Tensor):
+        pix_x0 = torch.floor(pix_x)
+        pix_x1 = pix_x0 + 1
+        pix_y0 = torch.floor(pix_y)
+        pix_y1 = pix_y0 + 1
+    else:
+        pix_x0 = np.floor(pix_x)
+        pix_x1 = pix_x0 + 1
+        pix_y0 = np.floor(pix_y)
+        pix_y1 = pix_y0 + 1
+
 
     # Clip within image boundary
     y_max = (img_h - 1)
     x_max = (img_w - 1)
     zero = np.zeros([1])
 
-    pix_x0 = np.clip(pix_x0, zero, x_max)
-    pix_y0 = np.clip(pix_y0, zero, y_max)
-    pix_x1 = np.clip(pix_x1, zero, x_max)
-    pix_y1 = np.clip(pix_y1, zero, y_max)
+    if isinstance(pix_x0, torch.Tensor):
+        pix_x0 = torch.clip(pix_x0, 0, x_max)
+        pix_y0 = torch.clip(pix_y0, 0, y_max)
+        pix_x1 = torch.clip(pix_x1, 0, x_max)
+        pix_y1 = torch.clip(pix_y1, 0, y_max)
+
+    else:
+        pix_x0 = np.clip(pix_x0, zero, x_max)
+        pix_y0 = np.clip(pix_y0, zero, y_max)
+        pix_x1 = np.clip(pix_x1, zero, x_max)
+        pix_y1 = np.clip(pix_y1, zero, y_max)
 
     # Weights [B, pix_h, pix_w, 1]
     wt_x0 = pix_x1 - pix_x
@@ -113,27 +134,36 @@ def bilinear_sampler(imgs, pix_coords):
     base_y1 = pix_y1 * dim
 
     # 4 corner vert ices
-    idx00 = (pix_x0 + base_y0).reshape(B, -1, 1).astype(np.int)
-    idx01 = (pix_x0 + base_y1).reshape(B, -1, 1).astype(np.int)
-    idx10 = (pix_x1 + base_y0).reshape(B, -1, 1).astype(np.int)
-    idx11 = (pix_x1 + base_y1).reshape(B, -1, 1).astype(np.int)
+    if isinstance(pix_x0, torch.Tensor):
+        idx00 = (pix_x0 + base_y0).view(B, -1, 1).repeat(1, 1, img_c).long()
+        idx01 = (pix_x0 + base_y1).view(B, -1, 1).repeat(1, 1, img_c).long()
+        idx10 = (pix_x1 + base_y0).view(B, -1, 1).repeat(1, 1, img_c).long()
+        idx11 = (pix_x1 + base_y1).view(B, -1, 1).repeat(1, 1, img_c).long()
+    else:
+        idx00 = (pix_x0 + base_y0).reshape(B, -1, 1).astype(np.int)
+        idx01 = (pix_x0 + base_y1).reshape(B, -1, 1).astype(np.int)
+        idx10 = (pix_x1 + base_y0).reshape(B, -1, 1).astype(np.int)
+        idx11 = (pix_x1 + base_y1).reshape(B, -1, 1).astype(np.int)
 
     # Gather pixels from image using vertices
     imgs_flat = imgs.reshape([B, -1, img_c])
-    im00 = np.take_along_axis(imgs_flat, idx00, 1).reshape(out_shape)
-    im01 = np.take_along_axis(imgs_flat, idx01, 1).reshape(out_shape)
-    im10 = np.take_along_axis(imgs_flat, idx10, 1).reshape(out_shape)
-    im11 = np.take_along_axis(imgs_flat, idx11, 1).reshape(out_shape)
+
+    if isinstance(imgs_flat, torch.Tensor):
+        im00 = torch.gather(imgs_flat, 1, idx00).reshape(out_shape)
+        im01 = torch.gather(imgs_flat, 1, idx01).reshape(out_shape)
+        im10 = torch.gather(imgs_flat, 1, idx10).reshape(out_shape)
+        im11 = torch.gather(imgs_flat, 1, idx11).reshape(out_shape)
+    else:
+        im00 = np.take_along_axis(imgs_flat, idx00, 1).reshape(out_shape)
+        im01 = np.take_along_axis(imgs_flat, idx01, 1).reshape(out_shape)
+        im10 = np.take_along_axis(imgs_flat, idx10, 1).reshape(out_shape)
+        im11 = np.take_along_axis(imgs_flat, idx11, 1).reshape(out_shape)
 
     # Apply weights [pix_h, pix_w, 1]
     w00 = wt_x0 * wt_y0
     w01 = wt_x0 * wt_y1
     w10 = wt_x1 * wt_y0
     w11 = wt_x1 * wt_y1
-    if isinstance(im00, torch.Tensor):
-        w00, w01, w10, w11 = torch.Tensor(w00), torch.Tensor(w01), torch.Tensor(w10), torch.Tensor(w11)
-        if im00.is_cuda:
-            w00, w01, w10, w11 = w00.cuda(), w01.cuda(), w10.cuda(), w11.cuda()
     output = w00 * im00 + w01 * im01 + w10 * im10 + w11 * im11
     return output
 
@@ -149,6 +179,8 @@ class Plane:
         self.z = z
         self.yaw, self.roll, self.pitch = yaw, roll, pitch
         self.xyz = self.xyz_coord()
+        self.xyz = torch.Tensor(self.xyz).cuda()
+
 
     def xyz_coord(self):
         """
