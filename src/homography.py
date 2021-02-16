@@ -300,4 +300,5 @@ class IPM(nn.Module):
         #     warped_topdown = np.flip(warped_topdown, 1)
         # else:
         #     warped_topdown = torch.flip(warped_topdown, [1])
+        # warped_topdown, _ = warped_fv_images.max(1)
         return warped_topdown

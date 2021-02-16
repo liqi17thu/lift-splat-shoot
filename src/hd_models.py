@@ -128,7 +128,7 @@ class HDMapNet(nn.Module):
         return x
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans):
-        x = self.camencode(x)
+        x = self.get_cam_feats(x)
 
         B, N, _, _ = intrins.shape
         Ks = torch.eye(4, device=intrins.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
