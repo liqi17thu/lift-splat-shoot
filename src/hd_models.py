@@ -128,19 +128,21 @@ class HDMapNet(nn.Module):
         return x
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans):
-        x = self.get_cam_feats(x)
+        x = self.camencode(x)
 
         B, N, _, _ = intrins.shape
-        Ks = torch.ones((B, N, 4, 4), device=intrins.device)
+        Ks = torch.eye(4, device=intrins.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
         Ks[:, :, :3, :3] = intrins
 
-        RTs = torch.ones((B, N, 4, 4), device=rots.device)
-        RTs[:, :, :3, :3] = rots
-        RTs[:, :, :3, 3] = trans
+        Rs = torch.eye(4, device=rots.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        Rs[:, :, :3, :3] = rots.transpose(-1, -2)
+        Ts = torch.eye(4, device=trans.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        Ts[:, :, :3, 3] = -trans
+        RTs = Rs @ Ts
 
-        post_RTs = torch.ones((B, N, 4, 4), device=post_rots.device)
-        RTs[:, :, :3, :3] = post_rots
-        RTs[:, :, :3, 3] = post_trans
+        post_RTs = torch.eye(4, device=post_rots.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        post_RTs[:, :, :3, :3] = post_rots
+        post_RTs[:, :, :3, 3] = post_trans
 
         scale = torch.Tensor([
             [1/self.downsample, 0, 0, 0],
@@ -148,9 +150,10 @@ class HDMapNet(nn.Module):
             [0, 0, 1, 0],
             [0, 0, 0, 1]
         ]).cuda()
-
         post_RTs = scale @ post_RTs
+
         x = x.permute(0, 1, 3, 4, 2)
-        x = self.ipm(x, Ks, RTs, post_RTs)
-        x = x.permute(0, 3, 1, 2)
-        return self.bevencode(x)
+        topdown = self.ipm(x, Ks, RTs, post_RTs)
+        topdown = topdown.permute(0, 3, 1, 2)
+
+        return self.bevencode(topdown)
