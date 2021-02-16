@@ -9,6 +9,11 @@ CAM_BL = 3
 CAM_B = 4
 CAM_BR = 5
 
+import numpy as np
+import torch
+import torch.nn as nn
+import cv2
+
 # =========================================================
 # Projections
 # =========================================================
@@ -107,7 +112,7 @@ def bilinear_sampler(imgs, pix_coords):
     base_y0 = pix_y0 * dim
     base_y1 = pix_y1 * dim
 
-    # 4 corner vertices
+    # 4 corner vert ices
     idx00 = (pix_x0 + base_y0).reshape(B, -1, 1).astype(np.int)
     idx01 = (pix_x0 + base_y1).reshape(B, -1, 1).astype(np.int)
     idx10 = (pix_x1 + base_y0).reshape(B, -1, 1).astype(np.int)
@@ -206,60 +211,61 @@ def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
     return image2
 
 
-def IPM(images, Ks, RTs, xbound, ybound, post_RTs=None):
-    """
-    :param images: [B, N, H, W, C]
-    :param Ks: [B, N, 4, 4]
-    :param RTs: [B, N, 4, 4]
-    :return warped image: [B, h, w, C]
-    """
-    plane = Plane(xbound, ybound)
-    w = int((xbound[1] - xbound[0]) / xbound[2])
-    h = int((ybound[1] - ybound[0]) / ybound[2])
+class IPM(nn.Module):
+    def __init__(self, xbound, ybound, z=0., yaw=0., roll=0., pitch=0.):
+        super(IPM, self).__init__()
 
-    B, N, H, W, C = images.shape
+        self.plane = Plane(xbound, ybound, z, yaw, roll, pitch)
 
-    images = images.reshape(B*N, H, W, C)
-    warped_fv_images = ipm_from_parameters(images, plane.xyz, Ks, RTs, h, w, post_RTs)
-    warped_fv_images = warped_fv_images.reshape((B, N, h, w, C))
+        self.w = int((xbound[1] - xbound[0]) / xbound[2])
+        self.h = int((ybound[1] - ybound[0]) / ybound[2])
+        self.half_mask = np.zeros((1, self.h//2, self.w, 1))
 
-    half_mask = np.zeros((1, h//2, w, 1))
-    tri_mask = np.zeros((h, w))
-    vertices = np.array([[0, 0], [0, h], [w, h]], np.int32)
-    pts = vertices.reshape((-1, 1, 2))
-    cv2.fillPoly(tri_mask, [pts], color=1.)
-    tri_mask = tri_mask[None, :, :, None]
+        tri_mask = np.zeros((self.h, self.w))
+        vertices = np.array([[0, 0], [0, self.h], [self.w, self.h]], np.int32)
+        pts = vertices.reshape((-1, 1, 2))
+        cv2.fillPoly(tri_mask, [pts], color=1.)
+        self.tri_mask = tri_mask[None, :, :, None]
 
-    if isinstance(warped_fv_images, np.ndarray):
-        half_mask = half_mask.astype(warped_fv_images.dtype)
-        tri_mask = tri_mask.astype(warped_fv_images.dtype)
-        fliped_tri_mask = np.flip(tri_mask, 2)
-    elif isinstance(warped_fv_images, torch.Tensor):
-        half_mask = torch.Tensor(half_mask).type_as(warped_fv_images)
-        tri_mask = torch.Tensor(tri_mask).type_as(warped_fv_images)
-        fliped_tri_mask = torch.flip(tri_mask, [2])
-        if warped_fv_images.is_cuda:
-            half_mask = half_mask.cuda()
-            tri_mask = tri_mask.cuda()
-            fliped_tri_mask = fliped_tri_mask.cuda()
-    else:
-        raise NotImplementedError
+    def forward(self, images, Ks, RTs, post_RTs=None):
+        B, N, H, W, C = images.shape
 
-    warped_fv_images[:, CAM_F, :h//2, :, :] = half_mask     # CAM_FRONT
-    warped_fv_images[:, CAM_FL] *= fliped_tri_mask          # CAM_FRONT_LEFT
-    warped_fv_images[:, CAM_FR] *= tri_mask           # CAM_FRONT_RIGHT
-    warped_fv_images[:, CAM_B, h//2:, :, :] *= half_mask    # CAM_BACK
-    warped_fv_images[:, CAM_BL] *= 1 - tri_mask       # CAM_BACK_LEFT
-    warped_fv_images[:, CAM_BR] *= 1 - fliped_tri_mask              # CAM_BACK_RIGHT
+        images = images.reshape(B * N, H, W, C)
+        warped_fv_images = ipm_from_parameters(images, self.plane.xyz, Ks, RTs, self.h, self.w, post_RTs)
+        warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
 
-    warped_topdown = warped_fv_images[:, CAM_F] + warped_fv_images[:, CAM_B]  # CAM_FRONT + CAM_BACK
-    warped_mask = warped_topdown == 0
-    warped_topdown[warped_mask] = warped_fv_images[:, CAM_FL][warped_mask] + warped_fv_images[:, CAM_FR][warped_mask]
-    warped_mask = warped_topdown == 0
-    warped_topdown[warped_mask] = warped_fv_images[:, CAM_BL][warped_mask] + warped_fv_images[:, CAM_BR][warped_mask]
+        if isinstance(warped_fv_images, np.ndarray):
+            half_mask = self.half_mask.astype(warped_fv_images.dtype)
+            tri_mask = self.tri_mask.astype(warped_fv_images.dtype)
+            fliped_tri_mask = np.flip(tri_mask, 2)
+        elif isinstance(warped_fv_images, torch.Tensor):
+            half_mask = torch.Tensor(self.half_mask).type_as(warped_fv_images)
+            tri_mask = torch.Tensor(self.tri_mask).type_as(warped_fv_images)
+            fliped_tri_mask = torch.flip(tri_mask, [2])
+            if warped_fv_images.is_cuda:
+                half_mask = half_mask.cuda()
+                tri_mask = tri_mask.cuda()
+                fliped_tri_mask = fliped_tri_mask.cuda()
+        else:
+            raise NotImplementedError
 
-    # if isinstance(warped_topdown, np.ndarray):
-    #     warped_topdown = np.flip(warped_topdown, 1)
-    # else:
-    #     warped_topdown = torch.flip(warped_topdown, [1])
-    return warped_topdown
+        warped_fv_images[:, CAM_F, :self.h // 2, :, :] = half_mask  # CAM_FRONT
+        warped_fv_images[:, CAM_FL] *= fliped_tri_mask  # CAM_FRONT_LEFT
+        warped_fv_images[:, CAM_FR] *= tri_mask  # CAM_FRONT_RIGHT
+        warped_fv_images[:, CAM_B, self.h // 2:, :, :] *= half_mask  # CAM_BACK
+        warped_fv_images[:, CAM_BL] *= 1 - tri_mask  # CAM_BACK_LEFT
+        warped_fv_images[:, CAM_BR] *= 1 - fliped_tri_mask  # CAM_BACK_RIGHT
+
+        warped_topdown = warped_fv_images[:, CAM_F] + warped_fv_images[:, CAM_B]  # CAM_FRONT + CAM_BACK
+        warped_mask = warped_topdown == 0
+        warped_topdown[warped_mask] = warped_fv_images[:, CAM_FL][warped_mask] + warped_fv_images[:, CAM_FR][
+            warped_mask]
+        warped_mask = warped_topdown == 0
+        warped_topdown[warped_mask] = warped_fv_images[:, CAM_BL][warped_mask] + warped_fv_images[:, CAM_BR][
+            warped_mask]
+
+        # if isinstance(warped_topdown, np.ndarray):
+        #     warped_topdown = np.flip(warped_topdown, 1)
+        # else:
+        #     warped_topdown = torch.flip(warped_topdown, [1])
+        return warped_topdown

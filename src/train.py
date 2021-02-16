@@ -131,6 +131,7 @@ def train(version,
                 _, _, ious = get_batch_iou_multi_class(preds, binimgs)
                 _, _, _, _, _, acces, precs, recalls = get_accuracy_precision_recall_multi_class(preds, binimgs)
                 write_log(writer, loss, ious, acces, precs, recalls, 'train', counter)
+                writer.add_scalar('train/step_time', t1 - t0, counter)
 
             if counter % val_step == 0:
                 val_info = get_val_info(model, valloader, loss_fn, device)
