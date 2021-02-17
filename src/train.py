@@ -18,7 +18,7 @@ from .tools import get_batch_iou, get_val_info
 from .tools import get_batch_iou_multi_class, get_val_info
 from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss, SimpleLoss
-
+from .hd_models import HDMapNet
 
 def write_log(writer, loss, ious, acces, precs, recalls, title, counter):
     writer.add_scalar(f'{title}/loss', loss, counter)
@@ -49,14 +49,13 @@ def train(version,
           bot_pct_lim=(0.0, 0.22),
           rot_lim=(-5.4, 5.4),
           rand_flip=True,
-          ncams=5,
+          ncams=6,
           max_grad_norm=5.0,
           pos_weight=2.13,
           logdir='./runs',
 
-          xbound=[-50.0, 50.0, 0.25],
-          # ybound=[-50.0, 50.0, 0.5],
-          ybound=[-15.0, 15.0, 0.075],
+          xbound=[-30.0, 30.0, 0.15],
+          ybound=[-15.0, 15.0, 0.15],
           zbound=[-10.0, 10.0, 20.0],
           dbound=[4.0, 45.0, 1.0],
 
@@ -88,7 +87,8 @@ def train(version,
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
-    model = compile_model(grid_conf, data_aug_conf, outC=outC)
+    model = HDMapNet(ybound, xbound, outC=outC)
+    # model = compile_model(grid_conf, data_aug_conf, outC=outC)
     model.to(device)
 
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -123,13 +123,14 @@ def train(version,
             t1 = time()
 
             if counter % 10 == 0:
-                print(counter, loss.item())
+                print(counter, loss.item(), t1 - t0)
                 writer.add_scalar('train/loss', loss, counter)
 
             if counter % 50 == 0:
                 _, _, ious = get_batch_iou_multi_class(preds, binimgs)
                 _, _, _, _, _, acces, precs, recalls = get_accuracy_precision_recall_multi_class(preds, binimgs)
                 write_log(writer, loss, ious, acces, precs, recalls, 'train', counter)
+                writer.add_scalar('train/step_time', t1 - t0, counter)
 
             if counter % val_step == 0:
                 val_info = get_val_info(model, valloader, loss_fn, device)

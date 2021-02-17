@@ -385,7 +385,7 @@ def viz_model_preds_class3(version,
                             rot_lim=(-5.4, 5.4),
                             rand_flip=True,
 
-                            xbound=[-50.0, 50.0, 0.5],
+                            xbound=[-30.0, 30.0, 0.15],
                             ybound=[-15.0, 15.0, 0.15],
                             zbound=[-10.0, 10.0, 20.0],
                             dbound=[4.0, 45.0, 1.0],
@@ -435,8 +435,8 @@ def viz_model_preds_class3(version,
 
     val = 0.01
     fH, fW = final_dim
-    fig = plt.figure(figsize=(3*fW*val, (1.5*fW + 2*fH)*val))
-    gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(1.5*fW, fH, fH))
+    fig = plt.figure(figsize=(3*fW*val, (2*fW + 2*fH)*val))
+    gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(2*fW, fH, fH))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
     model.eval()
@@ -465,8 +465,8 @@ def viz_model_preds_class3(version,
                     plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.92), xycoords='axes fraction')
 
                 ax = plt.subplot(gs[0, :])
-                ax.get_xaxis().set_ticks([])
-                ax.get_yaxis().set_ticks([])
+                # ax.get_xaxis().set_ticks([])
+                # ax.get_yaxis().set_ticks([])
                 plt.setp(ax.spines.values(), color='b', linewidth=2)
                 # plt.legend(handles=[
                 #     mpatches.Patch(color=(0.0, 0.0, 1.0, 1.0), label='Output Vehicle Segmentation'),
@@ -474,21 +474,25 @@ def viz_model_preds_class3(version,
                 #     mpatches.Patch(color=(1.00, 0.50, 0.31, 0.8), label='Map (for visualization purposes only)')
                 # ], loc=(0.01, 0.86))
 
+                import numpy as np
+                out[out < 0.1] = np.nan
                 plt.imshow(out[si][1], vmin=0, vmax=1, cmap='Blues', alpha=0.8)
                 plt.imshow(out[si][2], vmin=0, vmax=1, cmap='Reds', alpha=0.8)
 
-                import numpy as np
                 binimgs[binimgs < 0.1] = np.nan
-                plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.8)
-                plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.8)
+                plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
 
                 # plt.imshow(out[si].transpose(0, -1), vmin=0, vmax=1, cmap='Blues', alpha=0.6)
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
+                # TODO: check this hack
+                # dx[[0, 1]] = dx[[1, 0]]
+                # bx[[0, 1]] = bx[[1, 0]]
                 plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
-                plt.xlim((out.shape[3], 0))
-                plt.ylim((0, out.shape[3]))
+                plt.xlim((binimgs.shape[3], 0))
+                plt.ylim((0, binimgs.shape[2]))
                 add_ego(bx, dx)
 
                 imname = f'eval{batchi:06}_{si:03}.jpg'
