@@ -266,6 +266,10 @@ class IPM(nn.Module):
         warped_fv_images = ipm_from_parameters(images, self.plane.xyz, Ks, RTs, self.h, self.w, post_RTs)
         warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
 
+        # max pooling
+        warped_topdown, _ = warped_fv_images.max(1)
+        return warped_topdown
+
         if isinstance(warped_fv_images, np.ndarray):
             half_mask = self.half_mask.astype(warped_fv_images.dtype)
             tri_mask = self.tri_mask.astype(warped_fv_images.dtype)

@@ -126,11 +126,12 @@ def get_rot(h):
 def img_transform(img, post_rot, post_tran,
                   resize, resize_dims, crop,
                   flip, rotate):
-    img = img.resize((352, 128))
-    post_rot[0, 0] *= 352/1600
-    post_rot[1, 1] *= 128/900
 
-    return img, post_rot, post_tran
+    # img = img.resize((352, 128))
+    # post_rot[0, 0] *= 352/1600
+    # post_rot[1, 1] *= 128/900
+
+    # return img, post_rot, post_tran
 
     # adjust image
     img = img.resize(resize_dims)

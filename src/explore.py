@@ -17,6 +17,7 @@ from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
                     SimpleLoss, get_val_info, add_ego, gen_dx_bx,
                     get_nusc_maps, plot_nusc_map)
 from .models import compile_model
+from .hd_models import HDMapNet
 
 
 def lidar_check(version,
@@ -206,7 +207,7 @@ def eval_model(version,
                 rand_flip=True,
 
                 xbound=[-50.0, 50.0, 0.5],
-                ybound=[-50.0, 50.0, 0.5],
+                ybound=[-15.0, 15.0, 0.15],
                 zbound=[-10.0, 10.0, 20.0],
                 dbound=[4.0, 45.0, 1.0],
 
@@ -377,6 +378,7 @@ def viz_model_preds_class3(version,
                             map_folder='/data/nuscenes/mini',
                             gpuid=1,
                             viz_train=False,
+                            outC=3,
 
                             H=900, W=1600,
                             resize_lim=(0.193, 0.225),
@@ -420,6 +422,7 @@ def viz_model_preds_class3(version,
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
     model = compile_model(grid_conf, data_aug_conf, outC=3)
+    # model = HDMapNet(ybound, xbound, outC=outC)
     # print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
     model.to(device)
