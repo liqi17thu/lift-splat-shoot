@@ -198,6 +198,7 @@ def eval_model(version,
                 dataroot='/data/nuscenes',
                 gpuid=1,
                 outC=3,
+                method='lift_splat',
 
                 H=900, W=1600,
                 resize_lim=(0.193, 0.225),
@@ -205,6 +206,7 @@ def eval_model(version,
                 bot_pct_lim=(0.0, 0.22),
                 rot_lim=(-5.4, 5.4),
                 rand_flip=True,
+                line_width=5,
 
                 xbound=[-50.0, 50.0, 0.5],
                 ybound=[-15.0, 15.0, 0.15],
@@ -226,6 +228,7 @@ def eval_model(version,
                     'rot_lim': rot_lim,
                     'H': H, 'W': W,
                     'rand_flip': rand_flip,
+                    'line_width': line_width,
                     'bot_pct_lim': bot_pct_lim,
                     'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
@@ -237,7 +240,10 @@ def eval_model(version,
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
-    model = compile_model(grid_conf, data_aug_conf, outC=outC)
+    if method == 'lift_splat':
+        model = compile_model(grid_conf, data_aug_conf, outC=outC)
+    else:
+        model = HDMapNet(ybound, xbound, outC=outC)
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
     model.to(device)
@@ -259,12 +265,15 @@ def viz_model_preds(version,
                     map_folder='/data/nuscenes/mini',
                     gpuid=1,
                     viz_train=False,
+                    outC=3,
+                    method='lift_splat',
 
                     H=900, W=1600,
                     resize_lim=(0.193, 0.225),
                     final_dim=(128, 352),
                     bot_pct_lim=(0.0, 0.22),
                     rot_lim=(-5.4, 5.4),
+                    line_width=5,
                     rand_flip=True,
 
                     xbound=[-50.0, 50.0, 0.5],
@@ -288,6 +297,7 @@ def viz_model_preds(version,
                     'final_dim': final_dim,
                     'rot_lim': rot_lim,
                     'H': H, 'W': W,
+                    'line_width': line_width,
                     'rand_flip': rand_flip,
                     'bot_pct_lim': bot_pct_lim,
                     'cams': cams,
@@ -301,8 +311,10 @@ def viz_model_preds(version,
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
-    # print('loading', modelf)
+    if method == 'lift_splat':
+        model = compile_model(grid_conf, data_aug_conf, outC=outC)
+    else:
+        model = HDMapNet(ybound, xbound, outC=outC)
     model.load_state_dict(torch.load(modelf))
     model.to(device)
 
@@ -379,12 +391,14 @@ def viz_model_preds_class3(version,
                             gpuid=1,
                             viz_train=False,
                             outC=3,
+                            method='lift_splat',
 
                             H=900, W=1600,
                             resize_lim=(0.193, 0.225),
                             final_dim=(128, 352),
                             bot_pct_lim=(0.0, 0.22),
                             rot_lim=(-5.4, 5.4),
+                            line_width=5,
                             rand_flip=True,
 
                             xbound=[-30.0, 30.0, 0.15],
@@ -409,6 +423,7 @@ def viz_model_preds_class3(version,
                     'rot_lim': rot_lim,
                     'H': H, 'W': W,
                     'rand_flip': rand_flip,
+                    'line_width': line_width,
                     'bot_pct_lim': bot_pct_lim,
                     'cams': cams,
                     'Ncams': 5,
@@ -421,9 +436,10 @@ def viz_model_preds_class3(version,
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
-    model = compile_model(grid_conf, data_aug_conf, outC=3)
-    # model = HDMapNet(ybound, xbound, outC=outC)
-    # print('loading', modelf)
+    if method == 'lift_splat':
+        model = compile_model(grid_conf, data_aug_conf, outC=outC)
+    else:
+        model = HDMapNet(ybound, xbound, outC=outC)
     model.load_state_dict(torch.load(modelf))
     model.to(device)
 

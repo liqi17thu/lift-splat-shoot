@@ -14,11 +14,11 @@ from torch.optim.lr_scheduler import StepLR
 
 from .models import compile_model
 from .data import compile_data
-from .tools import get_batch_iou, get_val_info
 from .tools import get_batch_iou_multi_class, get_val_info
 from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss, SimpleLoss
 from .hd_models import HDMapNet
+
 
 def write_log(writer, loss, ious, acces, precs, recalls, title, counter):
     writer.add_scalar(f'{title}/loss', loss, counter)
@@ -42,6 +42,7 @@ def train(version,
           nepochs=30,
           gpuid=1,
           outC=3,
+          method='lift_splat',
 
           H=900, W=1600,
           resize_lim=(0.193, 0.225),
@@ -50,6 +51,7 @@ def train(version,
           rot_lim=(-5.4, 5.4),
           rand_flip=True,
           ncams=6,
+          line_width=5,
           max_grad_norm=5.0,
           pos_weight=2.13,
           logdir='./runs',
@@ -77,6 +79,7 @@ def train(version,
                     'H': H, 'W': W,
                     'rand_flip': rand_flip,
                     'bot_pct_lim': bot_pct_lim,
+                    'line_width': line_width,
                     'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
                     'Ncams': ncams,
@@ -87,8 +90,11 @@ def train(version,
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
-    model = HDMapNet(ybound, xbound, outC=outC)
-    # model = compile_model(grid_conf, data_aug_conf, outC=outC)
+    if method == 'lift_splat':
+        model = compile_model(grid_conf, data_aug_conf, outC=outC)
+    else:
+        model = HDMapNet(ybound, xbound, outC=outC)
+
     model.to(device)
 
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
