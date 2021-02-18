@@ -35,6 +35,10 @@ class NuscData(torch.utils.data.Dataset):
         self.scenes = self.get_scenes()
         self.ixes = self.prepro()
 
+        # hack to change line width
+        global LINE_WIDTH
+        LINE_WIDTH = data_aug_conf['line_width']
+
         dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
         self.dx, self.bx, self.nx = dx.numpy(), bx.numpy(), nx.numpy()
         patch_h = grid_conf['xbound'][1] - grid_conf['xbound'][0]
