@@ -140,6 +140,25 @@ def img_transform(img, post_rot, post_tran,
         img = img.transpose(method=Image.FLIP_LEFT_RIGHT)
     img = img.rotate(rotate)
 
+    rot_resize = torch.Tensor([[resize[0], 0],
+                               [0, resize[1]]])
+    post_rot = rot_resize @ post_rot
+    post_tran = rot_resize @ post_tran
+
+    if flip:
+        rot_flip = torch.Tensor([[-1, 0],
+                                    [0, 1]])
+        tran_flip = torch.Tensor([resize_dims[0], 0])
+        post_rot = rot_flip @ post_rot
+        post_tran = rot_flip @ post_tran
+
+    rot_rot = get_rot(rotate / 180 * np.pi)
+    tran_flip = torch.Tensor(resize_dims) / 2
+    post_rot = rot_rot @ post_rot
+    post_tran = rot_rot @ post_tran + tran_flip
+
+    return img, post_rot, post_tran
+
     # post-homography transformation
     post_rot *= resize
     post_tran -= torch.Tensor(crop[:2])
@@ -170,6 +189,11 @@ class NormalizeInverse(torchvision.transforms.Normalize):
     def __call__(self, tensor):
         return super().__call__(tensor.clone())
 
+color_jitter = torchvision.transforms.ColorJitter(
+    brightness=0.4,
+    contrast=0.4,
+    saturation=0.4
+)
 
 denormalize_img = torchvision.transforms.Compose((
     NormalizeInverse(mean=[0.485, 0.456, 0.406],

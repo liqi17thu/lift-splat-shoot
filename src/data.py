@@ -17,6 +17,7 @@ from glob import glob
 
 from .topdown_mask import gen_topdown_mask, MyNuScenesMap
 from .tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx
+from .tools import color_jitter
 
 MAP = ['boston-seaport', 'singapore-hollandvillage', 'singapore-onenorth', 'singapore-queenstown']
 from .topdown_mask import LINE_WIDTH
@@ -111,24 +112,27 @@ class NuscData(torch.utils.data.Dataset):
     def sample_augmentation(self):
         H, W = self.data_aug_conf['H'], self.data_aug_conf['W']
         fH, fW = self.data_aug_conf['final_dim']
+        resize = (fW/W, fH/H)
+        resize_dims = (fW, fH)
+        crop = None
         if self.is_train:
-            resize = np.random.uniform(*self.data_aug_conf['resize_lim'])
-            resize_dims = (int(W*resize), int(H*resize))
-            newW, newH = resize_dims
-            crop_h = int((1 - np.random.uniform(*self.data_aug_conf['bot_pct_lim']))*newH) - fH
-            crop_w = int(np.random.uniform(0, max(0, newW - fW)))
-            crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
+            # resize = np.random.uniform(*self.data_aug_conf['resize_lim'])
+            # resize_dims = (int(W*resize), int(H*resize))
+            # newW, newH = resize_dims
+            # crop_h = int((1 - np.random.uniform(*self.data_aug_conf['bot_pct_lim']))*newH) - fH
+            # crop_w = int(np.random.uniform(0, max(0, newW - fW)))
+            # crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
             flip = False
             if self.data_aug_conf['rand_flip'] and np.random.choice([0, 1]):
                 flip = True
             rotate = np.random.uniform(*self.data_aug_conf['rot_lim'])
         else:
-            resize = max(fH/H, fW/W)
-            resize_dims = (int(W*resize), int(H*resize))
-            newW, newH = resize_dims
-            crop_h = int((1 - np.mean(self.data_aug_conf['bot_pct_lim']))*newH) - fH
-            crop_w = int(max(0, newW - fW) / 2)
-            crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
+            # resize = max(fH/H, fW/W)
+            # resize_dims = (int(W*resize), int(H*resize))
+            # newW, newH = resize_dims
+            # crop_h = int((1 - np.mean(self.data_aug_conf['bot_pct_lim']))*newH) - fH
+            # crop_w = int(max(0, newW - fW) / 2)
+            # crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
             flip = False
             rotate = 0
         return resize, resize_dims, crop, flip, rotate
@@ -168,6 +172,7 @@ class NuscData(torch.utils.data.Dataset):
             post_tran[:2] = post_tran2
             post_rot[:2, :2] = post_rot2
 
+            img = color_jitter(img)
             imgs.append(normalize_img(img))
             intrins.append(intrin)
             rots.append(rot)
