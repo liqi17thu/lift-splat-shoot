@@ -461,13 +461,18 @@ def viz_model_preds_class3(version,
     model.eval()
     counter = 0
     with torch.no_grad():
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, binimgs) in enumerate(loader):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, binimgs) in enumerate(loader):
+
             out = model(imgs.to(device),
                     rots.to(device),
                     trans.to(device),
                     intrins.to(device),
                     post_rots.to(device),
                     post_trans.to(device),
+                    z.to(device),
+                    yaw.to(device),
+                    pitch.to(device),
+                    roll.to(device)
                     )
             out = out.softmax(1).cpu()
 

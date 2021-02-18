@@ -110,7 +110,7 @@ def train(version,
     counter = 0
     for epoch in range(nepochs):
         np.random.seed()
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, binimgs) in enumerate(trainloader):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, binimgs) in enumerate(trainloader):
             t0 = time()
             opt.zero_grad()
             preds = model(imgs.to(device),
@@ -119,6 +119,10 @@ def train(version,
                     intrins.to(device),
                     post_rots.to(device),
                     post_trans.to(device),
+                    z.to(device),
+                    yaw.to(device),
+                    pitch.to(device),
+                    roll.to(device)
                     )
             binimgs = binimgs.to(device)
             loss = loss_fn(preds, binimgs)

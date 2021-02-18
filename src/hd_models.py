@@ -127,7 +127,7 @@ class HDMapNet(nn.Module):
         x = x.view(B, N, self.camC, imH//self.downsample, imW//self.downsample)
         return x
 
-    def forward(self, x, rots, trans, intrins, post_rots, post_trans):
+    def forward(self, x, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll):
         x = self.get_cam_feats(x)
 
         B, N, _, _ = intrins.shape
@@ -153,7 +153,7 @@ class HDMapNet(nn.Module):
         post_RTs = scale @ post_RTs
 
         x = x.permute(0, 1, 3, 4, 2)
-        topdown = self.ipm(x, Ks, RTs, post_RTs)
+        topdown = self.ipm(x, Ks, RTs, z, yaw, pitch, roll, post_RTs)
         topdown = topdown.permute(0, 3, 1, 2)
 
         return self.bevencode(topdown)

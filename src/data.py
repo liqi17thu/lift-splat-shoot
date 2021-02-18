@@ -144,6 +144,15 @@ class NuscData(torch.utils.data.Dataset):
         intrins = []
         post_rots = []
         post_trans = []
+
+        sample_data = rec['data']
+        sample_data_record = self.nusc.get('sample_data', sample_data['LIDAR_TOP'])
+        pose_record = self.nusc.get('ego_pose', sample_data_record['ego_pose_token'])
+        z = pose_record['translation'][2]
+        pos_rotation = Quaternion(pose_record['rotation'])
+        yaw, pitch, roll = pos_rotation.yaw_pitch_roll
+        yaw, pitch, roll = 0., pitch * 180 / np.pi, roll * 180 / np.pi
+
         for cam in cams:
             samp = self.nusc.get('sample_data', rec['data'][cam])
             imgname = os.path.join(self.nusc.dataroot, samp['filename'])
@@ -181,7 +190,7 @@ class NuscData(torch.utils.data.Dataset):
             post_trans.append(post_tran)
 
         return (torch.stack(imgs), torch.stack(rots), torch.stack(trans),
-                torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans))
+                torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans), z, yaw, pitch, roll)
 
     def get_lidar_data(self, rec, nsweeps):
         pts = get_lidar_data(self.nusc, rec,
@@ -269,11 +278,11 @@ class VizData(NuscData):
         rec = self.ixes[index]
 
         cams = self.choose_cams()
-        imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(rec, cams)
+        imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll = self.get_image_data(rec, cams)
         lidar_data = self.get_lidar_data(rec, nsweeps=3)
         binimg = self.get_lineimg(rec)
 
-        return imgs, rots, trans, intrins, post_rots, post_trans, lidar_data, binimg
+        return imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, lidar_data, binimg
 
 
 class SegmentationData(NuscData):
@@ -284,10 +293,10 @@ class SegmentationData(NuscData):
         rec = self.ixes[index]
 
         cams = self.choose_cams()
-        imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(rec, cams)
+        imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll = self.get_image_data(rec, cams)
         binimg = self.get_lineimg(rec)
 
-        return imgs, rots, trans, intrins, post_rots, post_trans, binimg
+        return imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, binimg
 
 
 def worker_rnd_init(x):
