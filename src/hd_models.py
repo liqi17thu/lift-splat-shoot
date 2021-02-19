@@ -112,7 +112,7 @@ class HDMapNet(nn.Module):
         self.ybound = ybound
         self.camC = camC
         self.downsample = 16
-        self.ipm = IPM(xbound, ybound)
+        self.ipm = IPM(xbound, ybound, N=6, C=camC)
 
         self.camencode = CamEncode(camC)
         self.bevencode = BevEncode(inC=camC, outC=outC)
@@ -152,8 +152,6 @@ class HDMapNet(nn.Module):
         ]).cuda()
         post_RTs = scale @ post_RTs
 
-        x = x.permute(0, 1, 3, 4, 2)
         topdown = self.ipm(x, Ks, RTs, z, yaw, pitch, roll, post_RTs)
-        topdown = topdown.permute(0, 3, 1, 2)
 
         return self.bevencode(topdown)

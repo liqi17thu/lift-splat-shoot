@@ -191,9 +191,30 @@ def plane_esti(images):
     return z, yaw, roll, pitch
 
 
+class PlaneEstimationModule(nn.Module):
+    def __init__(self, N, C):
+        super(PlaneEstimationModule, self).__init__()
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.linear = nn.Linear(N*C, 3)
+
+        self.linear.weight.data.fill_(0.)
+        self.linear.bias.data.fill_(0.)
+
+    def forward(self, x):
+        B, N, C, H, W = x.shape
+        x = x.view(B*N, C, H, W)
+        x = self.max_pool(x)
+        x = x.view(B, N*C)
+        x = self.linear(x)
+        z, pitch, roll = x[:, 0], x[:, 1], x[:, 2]
+        return z, pitch, roll
+
+
 class IPM(nn.Module):
-    def __init__(self, xbound, ybound):
+    def __init__(self, xbound, ybound, N, C):
         super(IPM, self).__init__()
+        self.plane_esti = PlaneEstimationModule(N, C)
+
         self.xbound = xbound
         self.ybound = ybound
 
@@ -208,6 +229,12 @@ class IPM(nn.Module):
         self.tri_mask = tri_mask[None, :, :, None]
 
     def forward(self, images, Ks, RTs, zs, yaws, rolls, pitchs, post_RTs=None):
+        z, pitch, roll = self.plane_esti(images)
+        zs += z
+        pitchs += pitch
+        rolls += roll
+
+        images = images.permute(0, 1, 3, 4, 2)
         B, N, H, W, C = images.shape
 
         planes = plane_grid(self.xbound, self.ybound, zs, yaws, rolls, pitchs)
@@ -217,7 +244,7 @@ class IPM(nn.Module):
         warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
 
         warped_topdown = torch.max(warped_fv_images, 1)[0]
-        return warped_topdown
+        return warped_topdown.permute(0, 3, 1, 2)
 
         half_mask = torch.Tensor(self.half_mask).type_as(warped_fv_images)
         tri_mask = torch.Tensor(self.tri_mask).type_as(warped_fv_images)
@@ -242,4 +269,5 @@ class IPM(nn.Module):
         warped_topdown[warped_mask] = warped_fv_images[:, CAM_BL][warped_mask] + warped_fv_images[:, CAM_BR][
             warped_mask]
 
-        return warped_topdown
+        return warped_topdown.permute(0, 3, 1, 2)
+
