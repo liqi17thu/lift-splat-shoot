@@ -152,6 +152,7 @@ class NuscData(torch.utils.data.Dataset):
         pos_rotation = Quaternion(pose_record['rotation'])
         yaw, pitch, roll = pos_rotation.yaw_pitch_roll
         yaw, pitch, roll = 0., pitch * 180 / np.pi, roll * 180 / np.pi
+        z, yaw, pitch, roll = torch.tensor(z), torch.tensor(yaw), torch.tensor(pitch), torch.tensor(roll)
 
         for cam in cams:
             samp = self.nusc.get('sample_data', rec['data'][cam])
@@ -181,7 +182,8 @@ class NuscData(torch.utils.data.Dataset):
             post_tran[:2] = post_tran2
             post_rot[:2, :2] = post_rot2
 
-            img = color_jitter(img)
+            if self.is_train:
+                img = color_jitter(img)
             imgs.append(normalize_img(img))
             intrins.append(intrin)
             rots.append(rot)

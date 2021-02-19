@@ -391,7 +391,7 @@ def viz_model_preds_class3(version,
                             gpuid=1,
                             viz_train=False,
                             outC=3,
-                            method='lift_splat',
+                            method='HDMap',
 
                             H=900, W=1600,
                             resize_lim=(0.193, 0.225),

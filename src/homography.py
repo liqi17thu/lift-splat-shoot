@@ -25,12 +25,12 @@ def rotation_from_euler(rolls, pitchs, yaws):
     """
     B = len(rolls)
 
-    si, sj, sk = np.sin(np.deg2rad(rolls)), np.sin(np.deg2rad(pitchs)), np.sin(np.deg2rad(yaws))
-    ci, cj, ck = np.cos(np.deg2rad(rolls)), np.cos(np.deg2rad(pitchs)), np.cos(np.deg2rad(yaws))
+    si, sj, sk = torch.sin(torch.deg2rad(rolls)), torch.sin(torch.deg2rad(pitchs)), torch.sin(torch.deg2rad(yaws))
+    ci, cj, ck = torch.cos(torch.deg2rad(rolls)), torch.cos(torch.deg2rad(pitchs)), torch.cos(torch.deg2rad(yaws))
     cc, cs = ci * ck, ci * sk
     sc, ss = si * ck, si * sk
 
-    R = torch.eye(4).unsqueeze(0).repeat(B, 1, 1)
+    R = torch.eye(4).unsqueeze(0).repeat(B, 1, 1).cuda()
     R[:, 0, 0] = cj * ck
     R[:, 0, 1] = sj * sc - cs
     R[:, 0, 2] = sj * cc + ss
@@ -139,19 +139,25 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     ymin, ymax = ybound[0], ybound[1]
     num_y = int((ybound[1] - ybound[0]) / ybound[2])
 
-    y = torch.linspace(xmin, xmax, num_x)
-    x = torch.linspace(ymin, ymax, num_y)
+    y = torch.linspace(xmin, xmax, num_x).cuda()
+    x = torch.linspace(ymin, ymax, num_y).cuda()
+
     y, x = torch.meshgrid(x, y)
+
     x = x.flatten()
     y = y.flatten()
 
     x = x.unsqueeze(0).repeat(B, 1)
     y = y.unsqueeze(0).repeat(B, 1)
 
-    z = torch.ones_like(x) * zs.view(-1, 1)
 
-    coords = torch.stack([y, x, z, torch.ones_like(x)], axis=1)
-    rotation_matrix = rotation_from_euler(rolls, pitchs, yaws)
+    z = torch.ones_like(x).cuda() * zs.view(-1, 1)
+    d = torch.ones_like(x).cuda()
+
+    coords = torch.stack([y, x, z, d], axis=1)
+
+    rotation_matrix = rotation_from_euler(rolls, pitchs, yaws).cuda()
+
     coords = rotation_matrix @ coords
     return coords
 
@@ -190,7 +196,7 @@ class IPM(nn.Module):
         super(IPM, self).__init__()
         self.xbound = xbound
         self.ybound = ybound
-        
+
         self.w = int((xbound[1] - xbound[0]) / xbound[2])
         self.h = int((ybound[1] - ybound[0]) / ybound[2])
         self.half_mask = np.zeros((1, self.h // 2, self.w, 1))
@@ -209,6 +215,9 @@ class IPM(nn.Module):
         images = images.reshape(B * N, H, W, C)
         warped_fv_images = ipm_from_parameters(images, planes, Ks, RTs, self.h, self.w, post_RTs)
         warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
+
+        warped_topdown = torch.max(warped_fv_images, 1)[0]
+        return warped_topdown
 
         half_mask = torch.Tensor(self.half_mask).type_as(warped_fv_images)
         tri_mask = torch.Tensor(self.tri_mask).type_as(warped_fv_images)
