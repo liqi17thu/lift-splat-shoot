@@ -266,9 +266,6 @@ class IPM(nn.Module):
         warped_fv_images = ipm_from_parameters(images, self.plane.xyz, Ks, RTs, self.h, self.w, post_RTs)
         warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
 
-        # max pooling
-        warped_topdown, _ = warped_fv_images.max(1)
-        return warped_topdown
 
         if isinstance(warped_fv_images, np.ndarray):
             half_mask = self.half_mask.astype(warped_fv_images.dtype)
@@ -292,13 +289,15 @@ class IPM(nn.Module):
         warped_fv_images[:, CAM_BL] *= 1 - tri_mask  # CAM_BACK_LEFT
         warped_fv_images[:, CAM_BR] *= 1 - fliped_tri_mask  # CAM_BACK_RIGHT
 
+        # max pooling
+        warped_topdown, _ = warped_fv_images.max(1)
+        return warped_topdown
+
         warped_topdown = warped_fv_images[:, CAM_F] + warped_fv_images[:, CAM_B]  # CAM_FRONT + CAM_BACK
         warped_mask = warped_topdown == 0
-        warped_topdown[warped_mask] = warped_fv_images[:, CAM_FL][warped_mask] + warped_fv_images[:, CAM_FR][
-            warped_mask]
+        warped_topdown[warped_mask] = warped_fv_images[:, CAM_FL][warped_mask] + warped_fv_images[:, CAM_FR][warped_mask]
         warped_mask = warped_topdown == 0
-        warped_topdown[warped_mask] = warped_fv_images[:, CAM_BL][warped_mask] + warped_fv_images[:, CAM_BR][
-            warped_mask]
+        warped_topdown[warped_mask] = warped_fv_images[:, CAM_BL][warped_mask] + warped_fv_images[:, CAM_BR][warped_mask]
 
         # if isinstance(warped_topdown, np.ndarray):
         #     warped_topdown = np.flip(warped_topdown, 1)

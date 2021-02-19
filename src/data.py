@@ -14,10 +14,11 @@ from nuscenes.nuscenes import NuScenes
 from nuscenes.utils.splits import create_splits_scenes
 from nuscenes.utils.data_classes import Box
 from glob import glob
+import torchvision
 
 from .topdown_mask import gen_topdown_mask, MyNuScenesMap
 from .tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx
-from .tools import color_jitter
+from .tools import random_erasing
 
 MAP = ['boston-seaport', 'singapore-hollandvillage', 'singapore-onenorth', 'singapore-queenstown']
 from .topdown_mask import LINE_WIDTH
@@ -138,6 +139,10 @@ class NuscData(torch.utils.data.Dataset):
         return resize, resize_dims, crop, flip, rotate
 
     def get_image_data(self, rec, cams):
+        color_jitter = torchvision.transforms.ColorJitter.get_params(
+        brightness=[0.6, 1.4], contrast=[0.6, 1.4], saturation=[0.6, 1.4], hue=[-0.2, 0.2]
+        )
+
         imgs = []
         rots = []
         trans = []
@@ -156,6 +161,7 @@ class NuscData(torch.utils.data.Dataset):
             rot = torch.Tensor(Quaternion(sens['rotation']).rotation_matrix)
             tran = torch.Tensor(sens['translation'])
 
+
             # augmentation (resize, crop, horizontal flip, rotate)
             resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
             img, post_rot2, post_tran2 = img_transform(img, post_rot, post_tran,
@@ -172,8 +178,12 @@ class NuscData(torch.utils.data.Dataset):
             post_tran[:2] = post_tran2
             post_rot[:2, :2] = post_rot2
 
-            img = color_jitter(img)
-            imgs.append(normalize_img(img))
+            if self.is_train:
+                img = color_jitter(img)
+            img = normalize_img(img)
+            if self.is_train:
+                img = random_erasing(img)
+            imgs.append(img)
             intrins.append(intrin)
             rots.append(rot)
             trans.append(tran)

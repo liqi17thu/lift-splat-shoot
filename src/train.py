@@ -42,7 +42,7 @@ def train(version,
           nepochs=30,
           gpuid=1,
           outC=3,
-          method='lift_splat',
+          method='HDMap',
 
           H=900, W=1600,
           resize_lim=(0.193, 0.225),
