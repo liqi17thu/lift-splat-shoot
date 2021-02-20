@@ -150,13 +150,13 @@ class HDMapNet(nn.Module):
         post_RTs[:, :, :3, :3] = post_rots
         post_RTs[:, :, :3, 3] = post_trans
 
-        scale = torch.Tensor([
-            [1/self.downsample, 0, 0, 0],
-            [0, 1/self.downsample, 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ]).cuda()
-        post_RTs = scale @ post_RTs
+        # scale = torch.Tensor([
+        #     [1/self.downsample, 0, 0, 0],
+        #     [0, 1/self.downsample, 0, 0],
+        #     [0, 0, 1, 0],
+        #     [0, 0, 0, 1]
+        # ]).cuda()
+        # post_RTs = scale @ post_RTs
 
         x = x.permute(0, 1, 3, 4, 2)
         topdown = self.ipm(x, Ks, RTs, post_RTs)
