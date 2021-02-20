@@ -61,6 +61,9 @@ def perspective(cam_coords, proj_mat, h, w):
     with open('old_proj_mat.npy', 'wb') as f:
         np.save(f, proj_mat.cpu().detach().numpy())
 
+    print(proj_mat.dtype)
+    print(cam_coords.dtype)
+
     eps = 1e-7
     pix_coords = proj_mat @ cam_coords
     N, _, _ = pix_coords.shape
