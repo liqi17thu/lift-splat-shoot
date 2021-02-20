@@ -30,7 +30,7 @@ def rotation_from_euler(rolls, pitchs, yaws):
     cc, cs = ci * ck, ci * sk
     sc, ss = si * ck, si * sk
 
-    R = torch.eye(4).unsqueeze(0).repeat(B, 1, 1).cuda()
+    R = torch.eye(4, dtype=torch.double).unsqueeze(0).repeat(B, 1, 1).cuda()
     R[:, 0, 0] = cj * ck
     R[:, 0, 1] = sj * sc - cs
     R[:, 0, 2] = sj * cc + ss
@@ -60,7 +60,7 @@ def perspective(cam_coords, proj_mat, h, w):
     with open('master_proj_mat.npy', 'wb') as f:
         np.save(f, proj_mat.cpu().detach().numpy())
     eps = 1e-7
-    pix_coords = proj_mat @ cam_coords
+    pix_coords = proj_mat @ cam_coords.float()
     N, _, _ = pix_coords.shape
 
     pix_coords = pix_coords[:, :2, :] / (pix_coords[:, 2, :][:, None, :] + eps)
@@ -143,32 +143,32 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     ymin, ymax = ybound[0], ybound[1]
     num_y = int((ybound[1] - ybound[0]) / ybound[2])
 
-    x = np.linspace(xmin, xmax, num_x)
-    y = np.linspace(ymin, ymax, num_y)
+    y = torch.linspace(xmin, xmax, num_x, dtype=torch.double).cuda()
+    x = torch.linspace(ymin, ymax, num_y, dtype=torch.double).cuda()
 
-    x, y = np.meshgrid(x, y)
+    y, x = torch.meshgrid(x, y)
 
     x = x.flatten()
     y = y.flatten()
 
-    x = x[None].repeat(B, axis=0)
-    y = y[None].repeat(B, axis=0)
+    x = x.unsqueeze(0).repeat(B, 1)
+    y = y.unsqueeze(0).repeat(B, 1)
 
-    z = np.ones_like(x) * zs.view(-1, 1).cpu().numpy()
-    d = np.ones_like(x)
+    z = torch.ones_like(x).cuda() * zs.view(-1, 1)
+    d = torch.ones_like(x).cuda()
 
-    coords = np.stack([y, x, z, d], axis=1)
+    coords = torch.stack([y, x, z, d], axis=1)
 
     with open('master_coords_before.npy', 'wb') as f:
-        np.save(f, coords)
+        np.save(f, coords.cpu().detach().numpy())
 
     rotation_matrix = rotation_from_euler(rolls, pitchs, yaws)
 
-    coords = rotation_matrix.cpu().numpy() @ coords
+    coords = rotation_matrix @ coords
 
     with open('master_coords_after.npy', 'wb') as f:
-        np.save(f, coords)
-    return torch.FloatTensor(coords).cuda()
+        np.save(f, coords.cpu().detach().numpy())
+    return coords
 
 
 def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
