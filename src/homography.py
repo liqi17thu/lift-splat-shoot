@@ -236,17 +236,21 @@ class IPM(nn.Module):
 
         images = images.permute(0, 1, 3, 4, 2)
         B, N, H, W, C = images.shape
+        planes = plane_grid(self.xbound, self.ybound, zs, yaws, rolls, pitchs)
+        planes = planes.repeat(N, 1, 1)
+        images = images.reshape(B * N, H, W, C)
 
+        with open('master_images.npy', 'wb') as f:
+            np.save(f, images.detach().cpu().numpy())
+        with open('master_planes.npy', 'wb') as f:
+            np.save(f, planes.detach().cpu().numpy())
         with open('master_Ks.npy', 'wb') as f:
             np.save(f, Ks.detach().cpu().numpy())
         with open('master_RTs.npy', 'wb') as f:
             np.save(f, RTs.detach().cpu().numpy())
         with open('master_post_RTs.npy', 'wb') as f:
-            np.save(f, RTs.detach().cpu().numpy())
+            np.save(f, post_RTs.detach().cpu().numpy())
 
-        planes = plane_grid(self.xbound, self.ybound, zs, yaws, rolls, pitchs)
-        planes = planes.repeat(N, 1, 1)
-        images = images.reshape(B * N, H, W, C)
         warped_fv_images = ipm_from_parameters(images, planes, Ks, RTs, self.h, self.w, post_RTs)
         warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
 
