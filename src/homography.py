@@ -60,8 +60,6 @@ def perspective(cam_coords, proj_mat, h, w):
         np.save(f, cam_coords.cpu().detach().numpy())
     with open('old_proj_mat.npy', 'wb') as f:
         np.save(f, proj_mat.cpu().detach().numpy())
-    print(h)
-    print(w)
 
     eps = 1e-7
     pix_coords = proj_mat @ cam_coords
@@ -243,6 +241,8 @@ def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
     P = P.reshape(-1, 4, 4)
     pixel_coords = perspective(xyz, P, target_h, target_w)
 
+    with open('old_xyz.npy', 'wb') as f:
+        np.save(f, xyz.cpu().detach().numpy())
     with open('old_P.npy', 'wb') as f:
         np.save(f, P.cpu().detach().numpy())
     with open('old_pixel_coords.npy', 'wb') as f:
