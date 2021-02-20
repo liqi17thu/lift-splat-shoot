@@ -199,8 +199,13 @@ class Plane:
         ymax = self.ybound[1]
         num_y = int((self.ybound[1] - self.ybound[0]) / self.ybound[2])
         grid = meshgrid(xmin, xmax, num_x, ymin, ymax, num_y, self.z)
+        grid = grid[None].repeat(4, axis=0)
+        with open('old_coords_before.npy', 'wb') as f:
+            np.save(f, grid)
         rotation_matrix = rotation_from_euler(self.roll, self.pitch, self.yaw)
         grid = rotation_matrix @ grid
+        with open('old_coords_after.npy', 'wb') as f:
+            np.save(f, grid)
         return grid
 
 
