@@ -199,6 +199,7 @@ class Plane:
         ymax = self.ybound[1]
         num_y = int((self.ybound[1] - self.ybound[0]) / self.ybound[2])
         grid = meshgrid(xmin, xmax, num_x, ymin, ymax, num_y, self.z)
+        grid = grid[None].repeat(4, axis=0)
         with open('old_coords_before.npy', 'wb') as f:
             np.save(f, grid)
         rotation_matrix = rotation_from_euler(self.roll, self.pitch, self.yaw)
@@ -279,7 +280,8 @@ class IPM(nn.Module):
     def forward(self, images, Ks, RTs, post_RTs=None):
         B, N, H, W, C = images.shape
 
-        images = images.reshape(B * N, H, W, C)
+        images = images.reshape(B*N, H, W, C)
+        self.plane.xyz = self.plane.xyz.repeat(N, 1, 1)
 
         with open('old_images.npy', 'wb') as f:
             np.save(f, images.cpu().detach().numpy())
