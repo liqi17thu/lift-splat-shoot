@@ -165,7 +165,6 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     rotation_matrix = rotation_from_euler(rolls, pitchs, yaws)
 
     coords = rotation_matrix @ coords
-
     with open('master_coords_after.npy', 'wb') as f:
         np.save(f, coords.cpu().detach().numpy())
     return coords
