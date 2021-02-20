@@ -162,8 +162,8 @@ class HDMapNet(nn.Module):
         topdown = self.ipm(x, Ks, RTs, post_RTs)
         topdown = topdown.permute(0, 3, 1, 2)
 
-        with open('old_cam_topdwon.npy', 'wb') as f:
-            np.save(f, x.cpu().detach().numpy())
+        with open('old_cam_topdown.npy', 'wb') as f:
+            np.save(f, topdown.cpu().detach().numpy())
 
         import ipdb; ipdb.set_trace()
 

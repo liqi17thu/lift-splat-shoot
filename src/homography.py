@@ -263,6 +263,16 @@ class IPM(nn.Module):
         B, N, H, W, C = images.shape
 
         images = images.reshape(B * N, H, W, C)
+
+        with open('old_images.npy', 'wb') as f:
+            np.save(f, images.cpu().detach().numpy())
+        with open('old_Ks.npy', 'wb') as f:
+            np.save(f, Ks.cpu().detach().numpy())
+        with open('old_RTs.npy', 'wb') as f:
+            np.save(f, RTs.cpu().detach().numpy())
+        with open('old_post_RTs.npy', 'wb') as f:
+            np.save(f, post_RTs.cpu().detach().numpy())
+
         warped_fv_images = ipm_from_parameters(images, self.plane.xyz, Ks, RTs, self.h, self.w, post_RTs)
         warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
 
