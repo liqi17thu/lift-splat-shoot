@@ -59,8 +59,6 @@ def perspective(cam_coords, proj_mat, h, w):
         np.save(f, cam_coords.cpu().detach().numpy())
     with open('master_proj_mat.npy', 'wb') as f:
         np.save(f, proj_mat.cpu().detach().numpy())
-    print(h)
-    print(w)
     eps = 1e-7
     pix_coords = proj_mat @ cam_coords
     N, _, _ = pix_coords.shape
@@ -162,9 +160,15 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
 
     coords = torch.stack([y, x, z, d], axis=1)
 
+    with open('master_coords_before.npy', 'wb') as f:
+        np.save(f, coords.detach().cpu().numpy())
+
     rotation_matrix = rotation_from_euler(rolls, pitchs, yaws).cuda()
 
     coords = rotation_matrix @ coords
+
+    with open('master_coords_after.npy', 'wb') as f:
+        np.save(f, coords.detach().cpu().numpy())
     return coords
 
 
