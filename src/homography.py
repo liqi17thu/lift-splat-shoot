@@ -176,7 +176,14 @@ def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
     if post_RT is not None:
         P = post_RT @ P
     P = P.reshape(-1, 4, 4)
+
     pixel_coords = perspective(xyz, P, target_h, target_w)
+
+    with open('master_P.npy', 'wb') as f:
+        np.save(f, P.detach().cpu().numpy())
+    with open('master_pixel_coords.npy', 'wb') as f:
+        np.save(f, pixel_coords.detach().cpu().numpy())
+
     image2 = bilinear_sampler(image, pixel_coords)
     image2 = image2.type_as(image)
     return image2
