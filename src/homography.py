@@ -235,6 +235,12 @@ def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
         P = post_RT @ P
     P = P.reshape(-1, 4, 4)
     pixel_coords = perspective(xyz, P, target_h, target_w)
+
+    with open('old_P.npy', 'wb') as f:
+        np.save(f, P.cpu().detach().numpy())
+    with open('old_pixel_coords.npy', 'wb') as f:
+        np.save(f, pixel_coords.cpu().detach().numpy())
+
     image2 = bilinear_sampler(image, pixel_coords)
     if isinstance(image2, np.ndarray):
         image2 = image2.astype(image.dtype)
@@ -264,8 +270,11 @@ class IPM(nn.Module):
 
         images = images.reshape(B * N, H, W, C)
 
+        self.plane.xyz = self.plane.xyz.unsqueeze(0).repeat(B*N, 1, 1)
         with open('old_images.npy', 'wb') as f:
             np.save(f, images.cpu().detach().numpy())
+        with open('old_planes.npy', 'wb') as f:
+            np.save(f, self.plane.xyz.cpu().detach().numpy())
         with open('old_Ks.npy', 'wb') as f:
             np.save(f, Ks.cpu().detach().numpy())
         with open('old_RTs.npy', 'wb') as f:
