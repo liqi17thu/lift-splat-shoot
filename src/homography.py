@@ -213,7 +213,7 @@ class PlaneEstimationModule(nn.Module):
 class IPM(nn.Module):
     def __init__(self, xbound, ybound, N, C):
         super(IPM, self).__init__()
-        self.plane_esti = PlaneEstimationModule(N, C)
+        # self.plane_esti = PlaneEstimationModule(N, C)
 
         self.xbound = xbound
         self.ybound = ybound
@@ -229,10 +229,10 @@ class IPM(nn.Module):
         self.tri_mask = tri_mask[None, :, :, None]
 
     def forward(self, images, Ks, RTs, zs, yaws, rolls, pitchs, post_RTs=None):
-        z, pitch, roll = self.plane_esti(images)
-        zs += z
-        pitchs += pitch
-        rolls += roll
+        # z, pitch, roll = self.plane_esti(images)
+        # zs += z
+        # pitchs += pitch
+        # rolls += roll
 
         images = images.permute(0, 1, 3, 4, 2)
         B, N, H, W, C = images.shape

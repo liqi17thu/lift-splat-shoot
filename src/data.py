@@ -188,11 +188,11 @@ class NuscData(torch.utils.data.Dataset):
             post_tran[:2] = post_tran2
             post_rot[:2, :2] = post_rot2
 
-            if self.is_train:
-                img = color_jitter(img)
+            # if self.is_train:
+            #     img = color_jitter(img)
             img = normalize_img(img)
-            if self.is_train:
-                img = random_erasing(img)
+            # if self.is_train:
+            #     img = random_erasing(img)
             imgs.append(img)
             intrins.append(intrin)
             rots.append(rot)
@@ -333,7 +333,7 @@ def compile_data(version, dataroot, data_aug_conf, grid_conf, bsz,
                        grid_conf=grid_conf)
 
     trainloader = torch.utils.data.DataLoader(traindata, batch_size=bsz,
-                                              shuffle=True,
+                                              shuffle=False,
                                               num_workers=nworkers,
                                               drop_last=True,
                                               worker_init_fn=worker_rnd_init)

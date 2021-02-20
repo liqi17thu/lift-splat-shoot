@@ -128,7 +128,9 @@ class HDMapNet(nn.Module):
         return x
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll):
-        x = self.get_cam_feats(x)
+        # x = self.get_cam_feats(x)
+        with open('master_input.npy', 'wb') as f:
+            np.save(f, x.detach().cpu().numpy())
 
         B, N, _, _ = intrins.shape
         Ks = torch.eye(4, device=intrins.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
@@ -144,14 +146,19 @@ class HDMapNet(nn.Module):
         post_RTs[:, :, :3, :3] = post_rots
         post_RTs[:, :, :3, 3] = post_trans
 
-        scale = torch.Tensor([
-            [1/self.downsample, 0, 0, 0],
-            [0, 1/self.downsample, 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ]).cuda()
-        post_RTs = scale @ post_RTs
+        # scale = torch.Tensor([
+        #     [1/self.downsample, 0, 0, 0],
+        #     [0, 1/self.downsample, 0, 0],
+        #     [0, 0, 1, 0],
+        #     [0, 0, 0, 1]
+        # ]).cuda()
+        # post_RTs = scale @ post_RTs
 
         topdown = self.ipm(x, Ks, RTs, z, yaw, pitch, roll, post_RTs)
+
+        with open('master_cam_topdown.npy', 'wb') as f:
+            np.save(f, x.detach().cpu().numpy())
+
+        import ipdb; ipdb.set_trace()
 
         return self.bevencode(topdown)
