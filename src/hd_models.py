@@ -128,7 +128,13 @@ class HDMapNet(nn.Module):
         return x
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans):
-        x = self.get_cam_feats(x)
+        with open('old_input.npy', 'wb') as f:
+            np.save(f, x.cpu().detach().numpy())
+
+        # x = self.get_cam_feats(x)
+
+        # with open('old_cam_feats.npy', 'wb') as f:
+        #     np.save(f, x.cpu().detach().numpy())
 
         B, N, _, _ = intrins.shape
         Ks = torch.eye(4, device=intrins.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
@@ -155,5 +161,10 @@ class HDMapNet(nn.Module):
         x = x.permute(0, 1, 3, 4, 2)
         topdown = self.ipm(x, Ks, RTs, post_RTs)
         topdown = topdown.permute(0, 3, 1, 2)
+
+        with open('old_cam_topdwon.npy', 'wb') as f:
+            np.save(f, x.cpu().detach().numpy())
+
+        import ipdb; ipdb.set_trace()
 
         return self.bevencode(topdown)

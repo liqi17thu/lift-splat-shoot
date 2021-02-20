@@ -304,7 +304,7 @@ def compile_data(version, dataroot, data_aug_conf, grid_conf, bsz,
                        grid_conf=grid_conf)
 
     trainloader = torch.utils.data.DataLoader(traindata, batch_size=bsz,
-                                              shuffle=True,
+                                              shuffle=False,
                                               num_workers=nworkers,
                                               drop_last=True,
                                               worker_init_fn=worker_rnd_init)
