@@ -60,7 +60,7 @@ def perspective(cam_coords, proj_mat, h, w):
     with open('master_proj_mat.npy', 'wb') as f:
         np.save(f, proj_mat.cpu().detach().numpy())
     eps = 1e-7
-    pix_coords = proj_mat @ cam_coords.float()
+    pix_coords = proj_mat @ cam_coords
     N, _, _ = pix_coords.shape
 
     pix_coords = pix_coords[:, :2, :] / (pix_coords[:, 2, :][:, None, :] + eps)
@@ -167,7 +167,7 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     coords = rotation_matrix @ coords
     with open('master_coords_after.npy', 'wb') as f:
         np.save(f, coords.cpu().detach().numpy())
-    return coords
+    return coords.float()
 
 
 def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
