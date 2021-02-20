@@ -237,6 +237,13 @@ class IPM(nn.Module):
         images = images.permute(0, 1, 3, 4, 2)
         B, N, H, W, C = images.shape
 
+        with open('master_Ks.npy', 'wb') as f:
+            np.save(f, Ks.detach().cpu().numpy())
+        with open('master_RTs.npy', 'wb') as f:
+            np.save(f, RTs.detach().cpu().numpy())
+        with open('master_post_RTs.npy', 'wb') as f:
+            np.save(f, RTs.detach().cpu().numpy())
+
         planes = plane_grid(self.xbound, self.ybound, zs, yaws, rolls, pitchs)
         planes = planes.repeat(N, 1, 1)
         images = images.reshape(B * N, H, W, C)

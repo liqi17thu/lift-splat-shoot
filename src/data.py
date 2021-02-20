@@ -156,7 +156,8 @@ class NuscData(torch.utils.data.Dataset):
         z = pose_record['translation'][2]
         pos_rotation = Quaternion(pose_record['rotation'])
         yaw, pitch, roll = pos_rotation.yaw_pitch_roll
-        yaw, pitch, roll = 0., pitch * 180 / np.pi, roll * 180 / np.pi
+        # yaw, pitch, roll = 0., pitch * 180 / np.pi, roll * 180 / np.pi
+        z, yaw, pitch, roll = 0., 0., 0., 0.
         z, yaw, pitch, roll = torch.tensor(z), torch.tensor(yaw), torch.tensor(pitch), torch.tensor(roll)
 
         for cam in cams:
