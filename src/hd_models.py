@@ -157,7 +157,7 @@ class HDMapNet(nn.Module):
         topdown = self.ipm(x, Ks, RTs, z, yaw, pitch, roll, post_RTs)
 
         with open('master_cam_topdown.npy', 'wb') as f:
-            np.save(f, x.detach().cpu().numpy())
+            np.save(f, topdown.detach().cpu().numpy())
 
         import ipdb; ipdb.set_trace()
 
