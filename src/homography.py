@@ -65,6 +65,9 @@ def perspective(cam_coords, proj_mat, h, w):
     pix_coords = proj_mat @ cam_coords
     N, _, _ = pix_coords.shape
 
+    with open('old_pix_coords.npy', 'wb') as f:
+        np.save(f, pix_coords.cpu().detach().numpy())
+
     pix_coords = pix_coords[:, :2, :] / (pix_coords[:, 2, :][:, None, :] + eps)
     if isinstance(pix_coords, torch.Tensor):
         pix_coords = pix_coords.view(N, 2, h, w)
