@@ -30,7 +30,7 @@ def rotation_from_euler(rolls, pitchs, yaws):
     cc, cs = ci * ck, ci * sk
     sc, ss = si * ck, si * sk
 
-    R = torch.eye(4).unsqueeze(0).repeat(B, 1, 1).cuda()
+    R = torch.eye(4, dtype=torch.double).unsqueeze(0).repeat(B, 1, 1).cuda()
     R[:, 0, 0] = cj * ck
     R[:, 0, 1] = sj * sc - cs
     R[:, 0, 2] = sj * cc + ss
@@ -57,6 +57,7 @@ def perspective(cam_coords, proj_mat, h, w):
     """
     eps = 1e-7
     pix_coords = proj_mat @ cam_coords
+
     N, _, _ = pix_coords.shape
 
     pix_coords = pix_coords[:, :2, :] / (pix_coords[:, 2, :][:, None, :] + eps)
@@ -139,8 +140,8 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     ymin, ymax = ybound[0], ybound[1]
     num_y = int((ybound[1] - ybound[0]) / ybound[2])
 
-    y = torch.linspace(xmin, xmax, num_x).cuda()
-    x = torch.linspace(ymin, ymax, num_y).cuda()
+    y = torch.linspace(xmin, xmax, num_x, dtype=torch.double).cuda()
+    x = torch.linspace(ymin, ymax, num_y, dtype=torch.double).cuda()
 
     y, x = torch.meshgrid(x, y)
 
@@ -151,8 +152,8 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     y = y.unsqueeze(0).repeat(B, 1)
 
 
-    z = torch.ones_like(x).cuda() * zs.view(-1, 1)
-    d = torch.ones_like(x).cuda()
+    z = torch.ones_like(x, dtype=torch.double).cuda() * zs.view(-1, 1)
+    d = torch.ones_like(x, dtype=torch.double).cuda()
 
     coords = torch.stack([y, x, z, d], axis=1)
 
@@ -213,7 +214,7 @@ class PlaneEstimationModule(nn.Module):
 class IPM(nn.Module):
     def __init__(self, xbound, ybound, N, C):
         super(IPM, self).__init__()
-        self.plane_esti = PlaneEstimationModule(N, C)
+        # self.plane_esti = PlaneEstimationModule(N, C)
 
         self.xbound = xbound
         self.ybound = ybound
@@ -229,10 +230,10 @@ class IPM(nn.Module):
         self.tri_mask = tri_mask[None, :, :, None]
 
     def forward(self, images, Ks, RTs, zs, yaws, rolls, pitchs, post_RTs=None):
-        z, pitch, roll = self.plane_esti(images)
-        zs += z
-        pitchs += pitch
-        rolls += roll
+        # z, pitch, roll = self.plane_esti(images)
+        # zs += z
+        # pitchs += pitch
+        # rolls += roll
 
         images = images.permute(0, 1, 3, 4, 2)
         B, N, H, W, C = images.shape
