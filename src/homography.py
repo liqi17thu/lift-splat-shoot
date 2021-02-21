@@ -190,7 +190,7 @@ class Plane:
         self.z = z
         self.yaw, self.roll, self.pitch = yaw, roll, pitch
         self.xyz = self.xyz_coord()
-        self.xyz = torch.tensor(self.xyz, dtype=torch.double).cuda()
+        self.xyz = torch.Tensor(self.xyz).cuda()
 
 
     def xyz_coord(self):

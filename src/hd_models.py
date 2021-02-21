@@ -137,16 +137,20 @@ class HDMapNet(nn.Module):
         #     np.save(f, x.cpu().detach().numpy())
 
         B, N, _, _ = intrins.shape
-        Ks = torch.eye(4, device=intrins.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        # Ks = torch.eye(4, device=intrins.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        Ks = torch.eye(4, device=intrins.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
         Ks[:, :, :3, :3] = intrins
 
-        Rs = torch.eye(4, device=rots.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        # Rs = torch.eye(4, device=rots.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        Rs = torch.eye(4, device=rots.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
         Rs[:, :, :3, :3] = rots.transpose(-1, -2)
-        Ts = torch.eye(4, device=trans.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        # Ts = torch.eye(4, device=trans.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        Ts = torch.eye(4, device=trans.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
         Ts[:, :, :3, 3] = -trans
         RTs = Rs @ Ts
 
-        post_RTs = torch.eye(4, device=post_rots.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        # post_RTs = torch.eye(4, device=post_rots.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        post_RTs = torch.eye(4, device=post_rots.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
         post_RTs[:, :, :3, :3] = post_rots
         post_RTs[:, :, :3, 3] = post_trans
 
