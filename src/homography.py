@@ -31,6 +31,7 @@ def rotation_from_euler(rolls, pitchs, yaws):
     sc, ss = si * ck, si * sk
 
     R = torch.eye(4, dtype=torch.double).unsqueeze(0).repeat(B, 1, 1).cuda()
+    # R = torch.eye(4).unsqueeze(0).repeat(B, 1, 1).cuda()
     R[:, 0, 0] = cj * ck
     R[:, 0, 1] = sj * sc - cs
     R[:, 0, 2] = sj * cc + ss
@@ -148,6 +149,8 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
 
     y = torch.linspace(xmin, xmax, num_x, dtype=torch.double).cuda()
     x = torch.linspace(ymin, ymax, num_y, dtype=torch.double).cuda()
+    # y = torch.linspace(xmin, xmax, num_x).cuda()
+    # x = torch.linspace(ymin, ymax, num_y).cuda()
 
     y, x = torch.meshgrid(x, y)
 
@@ -157,8 +160,10 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     x = x.unsqueeze(0).repeat(B, 1)
     y = y.unsqueeze(0).repeat(B, 1)
 
-    z = torch.ones_like(x).cuda() * zs.view(-1, 1)
-    d = torch.ones_like(x).cuda()
+    z = torch.ones_like(x, dtype=torch.double).cuda() * zs.view(-1, 1)
+    d = torch.ones_like(x, dtype=torch.double).cuda()
+    # z = torch.ones_like(x).cuda() * zs.view(-1, 1)
+    # d = torch.ones_like(x).cuda()
 
     coords = torch.stack([y, x, z, d], axis=1)
 

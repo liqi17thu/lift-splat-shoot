@@ -162,6 +162,10 @@ class NuscData(torch.utils.data.Dataset):
         yaw = torch.tensor(yaw, dtype=torch.double)
         pitch = torch.tensor(pitch, dtype=torch.double)
         roll = torch.tensor(roll, dtype=torch.double)
+        # z = torch.tensor(z, dtype=torch.float)
+        # yaw = torch.tensor(yaw, dtype=torch.float)
+        # pitch = torch.tensor(pitch, dtype=torch.float)
+        # roll = torch.tensor(roll, dtype=torch.float)
 
         for cam in cams:
             samp = self.nusc.get('sample_data', rec['data'][cam])
