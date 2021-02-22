@@ -175,7 +175,7 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     coords = rotation_matrix @ coords
     with open('master_coords_after.npy', 'wb') as f:
         np.save(f, coords.cpu().detach().numpy())
-    return coords
+    return coords.float()
 
 
 def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
