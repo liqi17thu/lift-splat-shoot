@@ -9,6 +9,7 @@ import os
 import numpy as np
 from PIL import Image
 import cv2
+import torchvision
 from pyquaternion import Quaternion
 from nuscenes.nuscenes import NuScenes
 from nuscenes.utils.splits import create_splits_scenes
@@ -21,6 +22,8 @@ from .tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx
 MAP = ['boston-seaport', 'singapore-hollandvillage', 'singapore-onenorth', 'singapore-queenstown']
 from .topdown_mask import LINE_WIDTH
 ONE_CLASS = False
+
+random_erasing = torchvision.transforms.RandomErasing()
 
 
 class NuscData(torch.utils.data.Dataset):
@@ -130,6 +133,9 @@ class NuscData(torch.utils.data.Dataset):
         return resize, resize_dims, crop, flip, rotate
 
     def get_image_data(self, rec, cams):
+        color_jitter = torchvision.transforms.ColorJitter.get_params(
+        brightness=[0.6, 1.4], contrast=[0.6, 1.4], saturation=[0.6, 1.4], hue=[-0.2, 0.2]
+        )
         imgs = []
         rots = []
         trans = []
@@ -164,7 +170,12 @@ class NuscData(torch.utils.data.Dataset):
             post_tran[:2] = post_tran2
             post_rot[:2, :2] = post_rot2
 
-            imgs.append(normalize_img(img))
+            if self.is_train:
+                img = color_jitter(img)
+            img = normalize_img(img)
+            if self.is_train:
+                img = random_erasing(img)
+            imgs.append(img)
             intrins.append(intrin)
             rots.append(rot)
             trans.append(tran)

@@ -421,8 +421,8 @@ def viz_model_preds_class3(version,
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
-    model = compile_model(grid_conf, data_aug_conf, outC=3)
-    # model = HDMapNet(ybound, xbound, outC=outC)
+    # model = compile_model(grid_conf, data_aug_conf, outC=3)
+    model = HDMapNet(ybound, xbound, outC=outC)
     # print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
     model.to(device)
