@@ -25,8 +25,8 @@ def rotation_from_euler(rolls, pitchs, yaws):
     """
     B = len(rolls)
 
-    si, sj, sk = torch.sin(torch.deg2rad(rolls)), torch.sin(torch.deg2rad(pitchs)), torch.sin(torch.deg2rad(yaws))
-    ci, cj, ck = torch.cos(torch.deg2rad(rolls)), torch.cos(torch.deg2rad(pitchs)), torch.cos(torch.deg2rad(yaws))
+    si, sj, sk = torch.sin(rolls), torch.sin(pitchs), torch.sin(yaws)
+    ci, cj, ck = torch.cos(rolls), torch.cos(pitchs), torch.cos(yaws)
     cc, cs = ci * ck, ci * sk
     sc, ss = si * ck, si * sk
 
@@ -150,11 +150,10 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     x = x.unsqueeze(0).repeat(B, 1)
     y = y.unsqueeze(0).repeat(B, 1)
 
-
     z = torch.ones_like(x).cuda() * zs.view(-1, 1)
     d = torch.ones_like(x).cuda()
 
-    coords = torch.stack([y, x, z, d], axis=1)
+    coords = torch.stack([x, y, z, d], axis=1)
 
     rotation_matrix = rotation_from_euler(rolls, pitchs, yaws).cuda()
 
@@ -180,15 +179,6 @@ def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
     image2 = bilinear_sampler(image, pixel_coords)
     image2 = image2.type_as(image)
     return image2
-
-
-def plane_esti(images):
-    B, N, H, W, C = images.shape
-    z = torch.zeros(B)
-    yaw = torch.zeros(B)
-    roll = torch.zeros(B)
-    pitch = torch.zeros(B)
-    return z, yaw, roll, pitch
 
 
 class PlaneEstimationModule(nn.Module):
@@ -220,49 +210,46 @@ class IPM(nn.Module):
 
         self.w = int((xbound[1] - xbound[0]) / xbound[2])
         self.h = int((ybound[1] - ybound[0]) / ybound[2])
-        self.half_mask = np.zeros((1, self.h // 2, self.w, 1))
 
         tri_mask = np.zeros((self.h, self.w))
         vertices = np.array([[0, 0], [0, self.h], [self.w, self.h]], np.int32)
         pts = vertices.reshape((-1, 1, 2))
         cv2.fillPoly(tri_mask, [pts], color=1.)
-        self.tri_mask = tri_mask[None, :, :, None]
+        self.tri_mask = torch.tensor(tri_mask[None, :, :, None]).cuda()
+        self.flipped_tri_mask = torch.flip(self.tri_mask, [2]).cuda()
 
-    def forward(self, images, Ks, RTs, zs, yaws, rolls, pitchs, post_RTs=None):
-        z, pitch, roll = self.plane_esti(images)
+    def mask_warped(self, warped_fv_images):
+        warped_fv_images[:, CAM_F, :, :self.w//2, :] *= 0  # CAM_FRONT
+        warped_fv_images[:, CAM_FL] *= self.fliped_tri_mask  # CAM_FRONT_LEFT
+        warped_fv_images[:, CAM_FR] *= 1 - self.tri_mask  # CAM_FRONT_RIGHT
+        warped_fv_images[:, CAM_B, :, self.w//2:, :] *= 0  # CAM_BACK
+        warped_fv_images[:, CAM_BL] *= self.tri_mask  # CAM_BACK_LEFT
+        warped_fv_images[:, CAM_BR] *= 1 - self.fliped_tri_mask  # CAM_BACK_RIGHT
+        return warped_fv_images
+
+    def forward(self, images, Ks, RTs, translation, yaw_roll_pitch, post_RTs=None):
+        z, roll, pitch = self.plane_esti(images)
+        zs = translation[:, 2]
+        rolls = yaw_roll_pitch[:, 1]
+        pitchs = yaw_roll_pitch[:, 2]
         zs += z
-        pitchs += pitch
         rolls += roll
+        pitchs += pitch
 
         images = images.permute(0, 1, 3, 4, 2)
         B, N, H, W, C = images.shape
 
-        planes = plane_grid(self.xbound, self.ybound, zs, yaws, rolls, pitchs)
+        planes = plane_grid(self.xbound, self.ybound, zs, torch.zeros_like(rolls), rolls, pitchs)
         planes = planes.repeat(N, 1, 1)
-        images = images.reshape(B * N, H, W, C)
+        images = images.reshape(B*N, H, W, C)
         warped_fv_images = ipm_from_parameters(images, planes, Ks, RTs, self.h, self.w, post_RTs)
         warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
-
-        warped_topdown = torch.max(warped_fv_images, 1)[0]
-        return warped_topdown.permute(0, 3, 1, 2)
-
-        half_mask = torch.Tensor(self.half_mask).type_as(warped_fv_images)
-        tri_mask = torch.Tensor(self.tri_mask).type_as(warped_fv_images)
-        fliped_tri_mask = torch.flip(tri_mask, [2])
-        if warped_fv_images.is_cuda:
-            half_mask = half_mask.cuda()
-            tri_mask = tri_mask.cuda()
-            fliped_tri_mask = fliped_tri_mask.cuda()
-
-        warped_fv_images[:, CAM_F, :self.h // 2, :, :] = half_mask  # CAM_FRONT
-        warped_fv_images[:, CAM_FL] *= fliped_tri_mask  # CAM_FRONT_LEFT
-        warped_fv_images[:, CAM_FR] *= tri_mask  # CAM_FRONT_RIGHT
-        warped_fv_images[:, CAM_B, self.h // 2:, :, :] *= half_mask  # CAM_BACK
-        warped_fv_images[:, CAM_BL] *= 1 - tri_mask  # CAM_BACK_LEFT
-        warped_fv_images[:, CAM_BR] *= 1 - fliped_tri_mask  # CAM_BACK_RIGHT
+        warped_fv_images = self.mask_warped(warped_fv_images)
 
         # max pooling
         warped_topdown, _ = warped_fv_images.max(1)
+        warped_topdown = warped_topdown.permute(0, 3, 1, 2)
+        warped_topdown = warped_topdown.reshape(B, T, C, self.h, self.w)
         return warped_topdown
 
         warped_topdown = warped_fv_images[:, CAM_F] + warped_fv_images[:, CAM_B]  # CAM_FRONT + CAM_BACK

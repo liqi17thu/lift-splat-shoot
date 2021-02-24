@@ -511,9 +511,6 @@ def viz_model_preds_class3(version,
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
-                # TODO: check this hack
-                # dx[[0, 1]] = dx[[1, 0]]
-                # bx[[0, 1]] = bx[[1, 0]]
                 plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
                 plt.xlim((binimgs.shape[3], 0))
                 plt.ylim((0, binimgs.shape[2]))
