@@ -43,7 +43,7 @@ def train(version,
           nepochs=30,
           gpuid=1,
           outC=3,
-          method='HDMap',
+          method='temporal_HDMapNet',
 
           H=900, W=1600,
           resize_lim=(0.193, 0.225),
@@ -93,7 +93,9 @@ def train(version,
 
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
-    else:
+    elif method == 'HDMapNet':
+        model = HDMapNet(xbound, ybound, outC=outC)
+    elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
 
     model.to(device)

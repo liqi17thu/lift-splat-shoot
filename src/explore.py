@@ -17,7 +17,7 @@ from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
                     SimpleLoss, get_val_info, add_ego, gen_dx_bx,
                     get_nusc_maps, plot_nusc_map)
 from .models import compile_model
-from .hd_models import HDMapNet
+from .hd_models import HDMapNet, TemporalHDMapNet
 
 
 def lidar_check(version,
@@ -198,7 +198,7 @@ def eval_model(version,
                 dataroot='/data/nuscenes',
                 gpuid=1,
                 outC=3,
-                method='lift_splat',
+                method='temporal_HDMapNet',
 
                 H=900, W=1600,
                 resize_lim=(0.193, 0.225),
@@ -242,8 +242,11 @@ def eval_model(version,
 
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
-    else:
-        model = HDMapNet(ybound, xbound, outC=outC)
+    elif method == 'HDMapNet':
+        model = HDMapNet(xbound, ybound, outC=outC)
+    elif method == 'temporal_HDMapNet':
+        model = TemporalHDMapNet(xbound, ybound, outC=outC)
+
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
     model.to(device)
@@ -391,7 +394,7 @@ def viz_model_preds_class3(version,
                             gpuid=1,
                             viz_train=False,
                             outC=3,
-                            method='HDMap',
+                            method='temporal_HDMapNet',
 
                             H=900, W=1600,
                             resize_lim=(0.193, 0.225),
@@ -438,8 +441,11 @@ def viz_model_preds_class3(version,
 
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
-    else:
+    elif method == 'HDMapNet':
         model = HDMapNet(xbound, ybound, outC=outC)
+    elif method == 'temporal_HDMapNet':
+        model = TemporalHDMapNet(xbound, ybound, outC=outC)
+
     model.load_state_dict(torch.load(modelf))
     model.to(device)
 
