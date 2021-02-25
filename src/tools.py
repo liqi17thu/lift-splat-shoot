@@ -38,7 +38,7 @@ def plane_grid_2d(xbound, ybound):
     x = x.flatten()
     y = y.flatten()
 
-    coords = torch.stack([x, y], axis=1)
+    coords = torch.stack([x, y], axis=0)
     return coords
 
 

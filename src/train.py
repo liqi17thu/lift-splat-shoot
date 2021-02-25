@@ -85,9 +85,15 @@ def train(version,
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
                     'Ncams': ncams,
                 }
+
+    if 'temporal' in method:
+        parser_name = 'temporalsegmentationdata'
+    else:
+        parser_name = 'segmentationdata'
+
     trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='temporalsegmentationdata')
+                                          parser_name=parser_name)
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 

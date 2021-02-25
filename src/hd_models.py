@@ -113,6 +113,7 @@ class HDMapNet(nn.Module):
         self.camC = camC
         self.downsample = 16
         self.ipm = IPM(xbound, ybound, N=6, C=camC)
+        # self.ipm = IPM(xbound, ybound, N=6, C=camC, visual=True)
 
         self.camencode = CamEncode(camC)
         self.bevencode = BevEncode(inC=camC, outC=outC)
