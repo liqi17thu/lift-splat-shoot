@@ -39,7 +39,7 @@ def write_log(writer, loss, ious, acces, precs, recalls, title, counter):
 
 
 def train(version,
-          dataroot='/data/nuscenes',
+          dataroot='data/nuScenes',
           nepochs=30,
           gpuid=1,
           outC=3,
@@ -100,9 +100,9 @@ def train(version,
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
     elif method == 'HDMapNet':
-        model = HDMapNet(xbound, ybound, outC=outC)
+        model = HDMapNet(ybound, xbound, outC=outC)
     elif method == 'temporal_HDMapNet':
-        model = TemporalHDMapNet(xbound, ybound, outC=outC)
+        model = TemporalHDMapNet(ybound, xbound, outC=outC)
 
     model.to(device)
 

@@ -389,8 +389,8 @@ def viz_model_preds(version,
 
 def viz_model_preds_class3(version,
                             modelf,
-                            dataroot='/data/nuscenes',
-                            map_folder='/data/nuscenes/mini',
+                            dataroot='data/nuScenes',
+                            map_folder='data/nuScenes',
                             gpuid=1,
                             viz_train=False,
                             outC=3,
@@ -442,9 +442,9 @@ def viz_model_preds_class3(version,
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
     elif method == 'HDMapNet':
-        model = HDMapNet(xbound, ybound, outC=outC)
+        model = HDMapNet(ybound, xbound, outC=outC)
     elif method == 'temporal_HDMapNet':
-        model = TemporalHDMapNet(xbound, ybound, outC=outC)
+        model = TemporalHDMapNet(ybound, xbound, outC=outC)
 
     model.load_state_dict(torch.load(modelf))
     model.to(device)
@@ -516,7 +516,8 @@ def viz_model_preds_class3(version,
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
                 plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
-                plt.xlim((0, binimgs.shape[3]))
+                # plt.xlim((0, binimgs.shape[3]))
+                plt.xlim((binimgs.shape[3], 0))
                 plt.ylim((0, binimgs.shape[2]))
                 add_ego(bx, dx)
 
