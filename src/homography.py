@@ -205,14 +205,19 @@ class IPM(nn.Module):
         super(IPM, self).__init__()
         self.visual = visual
         self.z_roll_pitch = z_roll_pitch
-        if z_roll_pitch:
-            self.plane_esti = PlaneEstimationModule(N, C)
-
         self.xbound = xbound
         self.ybound = ybound
-
         self.w = int((xbound[1] - xbound[0]) / xbound[2])
         self.h = int((ybound[1] - ybound[0]) / ybound[2])
+
+        if z_roll_pitch:
+            self.plane_esti = PlaneEstimationModule(N, C)
+        else:
+            zs = torch.tensor([0.]).cuda()
+            yaws = torch.tensor([0.]).cuda()
+            rolls = torch.tensor([0.]).cuda()
+            pitchs = torch.tensor([0.]).cuda()
+            self.planes = plane_grid(self.xbound, self.ybound, zs, yaws, rolls, pitchs)[0]
 
         tri_mask = np.zeros((self.h, self.w))
         vertices = np.array([[0, 0], [0, self.h], [self.w, self.h]], np.int32)
@@ -245,11 +250,7 @@ class IPM(nn.Module):
             planes = plane_grid(self.xbound, self.ybound, zs, torch.zeros_like(rolls), rolls, pitchs)
             planes = planes.repeat(N, 1, 1)
         else:
-            zs = torch.tensor([0.]).cuda()
-            yaws = torch.tensor([0.]).cuda()
-            rolls = torch.tensor([0.]).cuda()
-            pitchs = torch.tensor([0.]).cuda()
-            planes = plane_grid(self.xbound, self.ybound, zs, yaws, rolls, pitchs)[0]
+            planes = self.planes
 
         images = images.reshape(B*N, H, W, C)
         warped_fv_images = ipm_from_parameters(images, planes, Ks, RTs, self.h, self.w, post_RTs)
@@ -266,7 +267,7 @@ class IPM(nn.Module):
 
         warped_topdown, _ = warped_fv_images.max(1)
         warped_topdown = warped_topdown.permute(0, 3, 1, 2)
-        warped_topdown = warped_topdown.reshape(B, C, self.h, self.w)
+        warped_topdown = warped_topdown.view(B, C, self.h, self.w)
         return warped_topdown
 
 
