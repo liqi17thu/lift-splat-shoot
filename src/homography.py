@@ -203,7 +203,7 @@ class PlaneEstimationModule(nn.Module):
 class IPM(nn.Module):
     def __init__(self, xbound, ybound, N, C):
         super(IPM, self).__init__()
-        self.plane_esti = PlaneEstimationModule(N, C)
+        # self.plane_esti = PlaneEstimationModule(N, C)
 
         self.xbound = xbound
         self.ybound = ybound
@@ -220,25 +220,28 @@ class IPM(nn.Module):
 
     def mask_warped(self, warped_fv_images):
         warped_fv_images[:, CAM_F, :, :self.w//2, :] *= 0  # CAM_FRONT
-        warped_fv_images[:, CAM_FL] *= self.fliped_tri_mask  # CAM_FRONT_LEFT
+        warped_fv_images[:, CAM_FL] *= self.flipped_tri_mask  # CAM_FRONT_LEFT
         warped_fv_images[:, CAM_FR] *= 1 - self.tri_mask  # CAM_FRONT_RIGHT
         warped_fv_images[:, CAM_B, :, self.w//2:, :] *= 0  # CAM_BACK
         warped_fv_images[:, CAM_BL] *= self.tri_mask  # CAM_BACK_LEFT
-        warped_fv_images[:, CAM_BR] *= 1 - self.fliped_tri_mask  # CAM_BACK_RIGHT
+        warped_fv_images[:, CAM_BR] *= 1 - self.flipped_tri_mask  # CAM_BACK_RIGHT
         return warped_fv_images
 
     def forward(self, images, Ks, RTs, translation, yaw_roll_pitch, post_RTs=None):
-        z, roll, pitch = self.plane_esti(images)
-        zs = translation[:, 2]
-        rolls = yaw_roll_pitch[:, 1]
-        pitchs = yaw_roll_pitch[:, 2]
-        zs += z
-        rolls += roll
-        pitchs += pitch
+        # z, roll, pitch = self.plane_esti(images)
+        # zs = translation[:, 2]
+        # rolls = yaw_roll_pitch[:, 1]
+        # pitchs = yaw_roll_pitch[:, 2]
+        # zs += z
+        # rolls += roll
+        # pitchs += pitch
 
         images = images.permute(0, 1, 3, 4, 2)
         B, N, H, W, C = images.shape
 
+        zs = torch.zeros(B).cuda()
+        rolls = torch.zeros(B).cuda()
+        pitchs = torch.zeros(B).cuda()
         planes = plane_grid(self.xbound, self.ybound, zs, torch.zeros_like(rolls), rolls, pitchs)
         planes = planes.repeat(N, 1, 1)
         images = images.reshape(B*N, H, W, C)
@@ -247,10 +250,10 @@ class IPM(nn.Module):
         warped_fv_images = self.mask_warped(warped_fv_images)
 
         # max pooling
-        warped_topdown, _ = warped_fv_images.max(1)
-        warped_topdown = warped_topdown.permute(0, 3, 1, 2)
-        warped_topdown = warped_topdown.reshape(B, T, C, self.h, self.w)
-        return warped_topdown
+        # warped_topdown, _ = warped_fv_images.max(1)
+        # warped_topdown = warped_topdown.permute(0, 3, 1, 2)
+        # warped_topdown = warped_topdown.reshape(B, C, self.h, self.w)
+        # return warped_topdown
 
         warped_topdown = warped_fv_images[:, CAM_F] + warped_fv_images[:, CAM_B]  # CAM_FRONT + CAM_BACK
         warped_mask = warped_topdown == 0

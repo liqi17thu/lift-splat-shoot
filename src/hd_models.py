@@ -168,8 +168,8 @@ def plane_grid_2d(xbound, ybound):
     ymin, ymax = ybound[0], ybound[1]
     num_y = int((ybound[1] - ybound[0]) / ybound[2])
 
-    y = torch.linspace(xmin, xmax, num_x)
-    x = torch.linspace(ymin, ymax, num_y)
+    y = torch.linspace(xmin, xmax, num_x).cuda()
+    x = torch.linspace(ymin, ymax, num_y).cuda()
     y, x = torch.meshgrid(x, y)
     x = x.flatten()
     y = y.flatten()
@@ -189,7 +189,7 @@ from .homography import bilinear_sampler
 def get_rot_2d(yaw):
     sin_yaw = torch.sin(yaw)
     cos_yaw = torch.cos(yaw)
-    rot = torch.zeros(list(yaw.shape) + [2, 2])
+    rot = torch.zeros(list(yaw.shape) + [2, 2]).cuda()
     rot[..., 0, 0] = cos_yaw
     rot[..., 0, 1] = sin_yaw
     rot[..., 1, 0] = -sin_yaw
@@ -220,10 +220,10 @@ class TemporalHDMapNet(HDMapNet):
         # B, T, 2, H*W
         grid = plane_grid_2d(self.xbound, self.ybound).view(1, 1, 2, H*W).repeat(B, T, 1, 1)
         rot0 = get_rot_2d(yaw)
-        trans0 = translation[:, :, :2]
+        trans0 = translation[:, :, :2].view(B, T, 2, 1)
         rot1 = get_rot_2d(yaw[:, 0].view(B, 1).repeat(1, T))
-        trans1 = translation[:, 0, :2].view(B, 1, 2).repeat(B, T, 2)
-        grid = rot1.T @ grid
+        trans1 = translation[:, 0, :2].view(B, 1, 2, 1).repeat(1, T, 1, 1)
+        grid = rot1.transpose(2, 3) @ grid
         grid = grid + trans1
         grid = grid - trans0
         grid = rot0 @ grid
@@ -233,6 +233,7 @@ class TemporalHDMapNet(HDMapNet):
         topdown = bilinear_sampler(topdown, grid)
         topdown = topdown.view(B, T, H, W, C)
         topdown = topdown.max(1)[0]
+        topdown = topdown.permute(0, 3, 1, 2)
         return topdown
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):

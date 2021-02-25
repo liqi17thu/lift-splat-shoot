@@ -377,10 +377,10 @@ def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):
     loader = tqdm(valloader) if use_tqdm else valloader
     with torch.no_grad():
         for batch in loader:
-            allimgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, binimgs = batch
+            allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs = batch
             preds = model(allimgs.to(device), rots.to(device),
                           trans.to(device), intrins.to(device), post_rots.to(device),
-                          post_trans.to(device), z.to(device), yaw.to(device), pitch.to(device), roll.to(device))
+                          post_trans.to(device), translation.to(device), yaw_pitch_roll.to(device))
             binimgs = binimgs.to(device)
 
             # loss

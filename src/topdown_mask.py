@@ -57,5 +57,5 @@ def gen_topdown_mask(nuscene, nusc_maps, sample_record, patch_size, canvas_size,
     log_record = nuscene.get('log', scene_record['log_token'])
     location = log_record['location']
     topdown_seg_mask = nusc_maps[location].get_map_mask(patch_box, patch_angle, seg_layers, canvas_size)
-    topdown_seg_mask = np.flip(topdown_seg_mask, 1)  # left-right correction
+    # topdown_seg_mask = np.flip(topdown_seg_mask, 1)  # left-right correction
     return topdown_seg_mask

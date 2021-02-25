@@ -304,16 +304,16 @@ class SegmentationData(NuscData):
         rec = self.ixes[index]
 
         cams = self.choose_cams()
-        imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll = self.get_image_data(rec, cams)
+        imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll = self.get_image_data(rec, cams)
         binimg = self.get_lineimg(rec)
 
-        return imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, binimg
+        return imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimg
 
 
 class TemporalSegmentationData(NuscData):
-    def __init__(self, T=1, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(TemporalSegmentationData, self).__init__(*args, **kwargs)
-        self.T = T
+        self.T = 2
 
     def __getitem__(self, index):
         rec = self.ixes[index]
@@ -372,6 +372,7 @@ def compile_data(version, dataroot, data_aug_conf, grid_conf, bsz,
     parser = {
         'vizdata': VizData,
         'segmentationdata': SegmentationData,
+        'temporalsegmentationdata': TemporalSegmentationData,
     }[parser_name]
     traindata = parser(nusc, nusc_maps, is_train=True, data_aug_conf=data_aug_conf,
                          grid_conf=grid_conf)
@@ -379,7 +380,7 @@ def compile_data(version, dataroot, data_aug_conf, grid_conf, bsz,
                        grid_conf=grid_conf)
 
     trainloader = torch.utils.data.DataLoader(traindata, batch_size=bsz,
-                                              shuffle=True,
+                                              shuffle=False,
                                               num_workers=nworkers,
                                               drop_last=True,
                                               worker_init_fn=worker_rnd_init)

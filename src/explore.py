@@ -439,7 +439,7 @@ def viz_model_preds_class3(version,
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
     else:
-        model = HDMapNet(ybound, xbound, outC=outC)
+        model = HDMapNet(xbound, ybound, outC=outC)
     model.load_state_dict(torch.load(modelf))
     model.to(device)
 
@@ -461,7 +461,7 @@ def viz_model_preds_class3(version,
     model.eval()
     counter = 0
     with torch.no_grad():
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, binimgs) in enumerate(loader):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs) in enumerate(loader):
 
             out = model(imgs.to(device),
                     rots.to(device),
@@ -469,10 +469,8 @@ def viz_model_preds_class3(version,
                     intrins.to(device),
                     post_rots.to(device),
                     post_trans.to(device),
-                    z.to(device),
-                    yaw.to(device),
-                    pitch.to(device),
-                    roll.to(device)
+                    translation.to(device),
+                    yaw_pitch_roll.to(device),
                     )
             out = out.softmax(1).cpu()
 
@@ -512,7 +510,7 @@ def viz_model_preds_class3(version,
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
                 plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
-                plt.xlim((binimgs.shape[3], 0))
+                plt.xlim((0, binimgs.shape[3]))
                 plt.ylim((0, binimgs.shape[2]))
                 add_ego(bx, dx)
 

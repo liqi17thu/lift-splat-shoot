@@ -18,6 +18,7 @@ from .tools import get_batch_iou_multi_class, get_val_info
 from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss, SimpleLoss
 from .hd_models import HDMapNet
+from .hd_models import TemporalHDMapNet
 
 
 def write_log(writer, loss, ious, acces, precs, recalls, title, counter):
@@ -86,14 +87,14 @@ def train(version,
                 }
     trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='segmentationdata')
+                                          parser_name='temporalsegmentationdata')
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
     else:
-        model = HDMapNet(ybound, xbound, outC=outC)
+        model = TemporalHDMapNet(xbound, ybound, outC=outC)
 
     model.to(device)
 
@@ -110,7 +111,7 @@ def train(version,
     counter = 0
     for epoch in range(nepochs):
         np.random.seed()
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, binimgs) in enumerate(trainloader):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs) in enumerate(trainloader):
             t0 = time()
             opt.zero_grad()
             preds = model(imgs.to(device),
@@ -119,10 +120,8 @@ def train(version,
                     intrins.to(device),
                     post_rots.to(device),
                     post_trans.to(device),
-                    z.to(device),
-                    yaw.to(device),
-                    pitch.to(device),
-                    roll.to(device)
+                    translation.to(device),
+                    yaw_pitch_roll.to(device),
                     )
             binimgs = binimgs.to(device)
             loss = loss_fn(preds, binimgs)
