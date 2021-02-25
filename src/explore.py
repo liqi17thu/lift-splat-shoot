@@ -17,7 +17,7 @@ from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
                     SimpleLoss, get_val_info, add_ego, gen_dx_bx,
                     get_nusc_maps, plot_nusc_map)
 from .models import compile_model
-from .hd_models import HDMapNet
+from .hd_models import HDMapNet, TemporalHDMapNet
 
 
 def lidar_check(version,
@@ -198,7 +198,7 @@ def eval_model(version,
                 dataroot='/data/nuscenes',
                 gpuid=1,
                 outC=3,
-                method='lift_splat',
+                method='temporal_HDMapNet',
 
                 H=900, W=1600,
                 resize_lim=(0.193, 0.225),
@@ -242,8 +242,11 @@ def eval_model(version,
 
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
-    else:
-        model = HDMapNet(ybound, xbound, outC=outC)
+    elif method == 'HDMapNet':
+        model = HDMapNet(xbound, ybound, outC=outC)
+    elif method == 'temporal_HDMapNet':
+        model = TemporalHDMapNet(xbound, ybound, outC=outC)
+
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
     model.to(device)
@@ -391,7 +394,7 @@ def viz_model_preds_class3(version,
                             gpuid=1,
                             viz_train=False,
                             outC=3,
-                            method='HDMap',
+                            method='temporal_HDMapNet',
 
                             H=900, W=1600,
                             resize_lim=(0.193, 0.225),
@@ -438,8 +441,11 @@ def viz_model_preds_class3(version,
 
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
-    else:
-        model = HDMapNet(ybound, xbound, outC=outC)
+    elif method == 'HDMapNet':
+        model = HDMapNet(xbound, ybound, outC=outC)
+    elif method == 'temporal_HDMapNet':
+        model = TemporalHDMapNet(xbound, ybound, outC=outC)
+
     model.load_state_dict(torch.load(modelf))
     model.to(device)
 
@@ -461,7 +467,7 @@ def viz_model_preds_class3(version,
     model.eval()
     counter = 0
     with torch.no_grad():
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, binimgs) in enumerate(loader):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs) in enumerate(loader):
 
             out = model(imgs.to(device),
                     rots.to(device),
@@ -469,10 +475,8 @@ def viz_model_preds_class3(version,
                     intrins.to(device),
                     post_rots.to(device),
                     post_trans.to(device),
-                    z.to(device),
-                    yaw.to(device),
-                    pitch.to(device),
-                    roll.to(device)
+                    translation.to(device),
+                    yaw_pitch_roll.to(device),
                     )
             out = out.softmax(1).cpu()
 
@@ -511,11 +515,8 @@ def viz_model_preds_class3(version,
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
-                # TODO: check this hack
-                # dx[[0, 1]] = dx[[1, 0]]
-                # bx[[0, 1]] = bx[[1, 0]]
                 plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
-                plt.xlim((binimgs.shape[3], 0))
+                plt.xlim((0, binimgs.shape[3]))
                 plt.ylim((0, binimgs.shape[2]))
                 add_ego(bx, dx)
 

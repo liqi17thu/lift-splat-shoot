@@ -42,10 +42,10 @@ class NuscData(torch.utils.data.Dataset):
 
         dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
         self.dx, self.bx, self.nx = dx.numpy(), bx.numpy(), nx.numpy()
-        patch_h = grid_conf['xbound'][1] - grid_conf['xbound'][0]
-        patch_w = grid_conf['ybound'][1] - grid_conf['ybound'][0]
-        canvas_h = int(patch_h / grid_conf['xbound'][2])
-        canvas_w = int(patch_w / grid_conf['ybound'][2])
+        patch_h = grid_conf['ybound'][1] - grid_conf['ybound'][0]
+        patch_w = grid_conf['xbound'][1] - grid_conf['xbound'][0]
+        canvas_h = int(patch_h / grid_conf['ybound'][2])
+        canvas_w = int(patch_w / grid_conf['xbound'][2])
         self.patch_size = (patch_h, patch_w)
         self.canvas_size = (canvas_h, canvas_w)
 
@@ -153,15 +153,12 @@ class NuscData(torch.utils.data.Dataset):
         sample_data = rec['data']
         sample_data_record = self.nusc.get('sample_data', sample_data['LIDAR_TOP'])
         pose_record = self.nusc.get('ego_pose', sample_data_record['ego_pose_token'])
-        z = pose_record['translation'][2]
+        translation = pose_record['translation']
+        translation = torch.tensor(translation)
+
         pos_rotation = Quaternion(pose_record['rotation'])
-        yaw, pitch, roll = pos_rotation.yaw_pitch_roll
-        # yaw, pitch, roll = 0., pitch * 180 / np.pi, roll * 180 / np.pi
-        z, yaw, pitch, roll = 0., 0., 0., 0.
-        z = torch.tensor(z, dtype=torch.double)
-        yaw = torch.tensor(yaw, dtype=torch.double)
-        pitch = torch.tensor(pitch, dtype=torch.double)
-        roll = torch.tensor(roll, dtype=torch.double)
+        yaw_pitch_roll = pos_rotation.yaw_pitch_roll
+        yaw_pitch_roll = torch.tensor(yaw_pitch_roll)
 
         for cam in cams:
             samp = self.nusc.get('sample_data', rec['data'][cam])
@@ -174,7 +171,6 @@ class NuscData(torch.utils.data.Dataset):
             intrin = torch.Tensor(sens['camera_intrinsic'])
             rot = torch.Tensor(Quaternion(sens['rotation']).rotation_matrix)
             tran = torch.Tensor(sens['translation'])
-
 
             # augmentation (resize, crop, horizontal flip, rotate)
             resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
@@ -205,7 +201,7 @@ class NuscData(torch.utils.data.Dataset):
             post_trans.append(post_tran)
 
         return (torch.stack(imgs), torch.stack(rots), torch.stack(trans),
-                torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans), z, yaw, pitch, roll)
+                torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans), translation, yaw_pitch_roll)
 
     def get_lidar_data(self, rec, nsweeps):
         pts = get_lidar_data(self.nusc, rec,
@@ -308,10 +304,56 @@ class SegmentationData(NuscData):
         rec = self.ixes[index]
 
         cams = self.choose_cams()
-        imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll = self.get_image_data(rec, cams)
+        imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll = self.get_image_data(rec, cams)
         binimg = self.get_lineimg(rec)
 
-        return imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, binimg
+        return imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimg
+
+
+class TemporalSegmentationData(NuscData):
+    def __init__(self, *args, **kwargs):
+        super(TemporalSegmentationData, self).__init__(*args, **kwargs)
+        self.T = 2
+
+    def __getitem__(self, index):
+        rec = self.ixes[index]
+
+        cams = self.choose_cams()
+        imgs_t = []
+        rots_t = []
+        trans_t = []
+        intrins_t = []
+        post_rots_t = []
+        post_trans_t = []
+        translation_t = []
+        yaw_pitch_roll_t = []
+
+        T = self.T
+        while T > 0:
+            imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll = self.get_image_data(rec, cams)
+            imgs_t.append(imgs)
+            rots_t.append(rots)
+            trans_t.append(trans)
+            intrins_t.append(intrins)
+            post_rots_t.append(post_rots)
+            post_trans_t.append(post_trans)
+            translation_t.append(translation)
+            yaw_pitch_roll_t.append(yaw_pitch_roll)
+            T -= 1
+            if rec['prev'] != '':
+                rec = self.nusc.get('sample', rec['prev'])
+
+        binimg = self.get_lineimg(rec)
+
+        imgs_t = torch.stack(imgs_t)
+        rots_t = torch.stack(rots_t)
+        trans_t = torch.stack(trans_t)
+        intrins_t = torch.stack(intrins_t)
+        post_rots_t = torch.stack(post_rots_t)
+        post_trans_t = torch.stack(post_trans_t)
+        translation_t = torch.stack(translation_t)
+        yaw_pitch_roll_t = torch.stack(yaw_pitch_roll_t)
+        return imgs_t, rots_t, trans_t, intrins_t, post_rots_t, post_trans_t, translation_t, yaw_pitch_roll_t, binimg
 
 
 def worker_rnd_init(x):
@@ -330,6 +372,7 @@ def compile_data(version, dataroot, data_aug_conf, grid_conf, bsz,
     parser = {
         'vizdata': VizData,
         'segmentationdata': SegmentationData,
+        'temporalsegmentationdata': TemporalSegmentationData,
     }[parser_name]
     traindata = parser(nusc, nusc_maps, is_train=True, data_aug_conf=data_aug_conf,
                          grid_conf=grid_conf)

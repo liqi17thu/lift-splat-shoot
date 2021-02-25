@@ -26,6 +26,40 @@ from nuscenes.utils.geometry_utils import transform_matrix
 from nuscenes.map_expansion.map_api import NuScenesMap
 
 
+def plane_grid_2d(xbound, ybound):
+    xmin, xmax = xbound[0], xbound[1]
+    num_x = int((xbound[1] - xbound[0]) / xbound[2])
+    ymin, ymax = ybound[0], ybound[1]
+    num_y = int((ybound[1] - ybound[0]) / ybound[2])
+
+    y = torch.linspace(xmin, xmax, num_x).cuda()
+    x = torch.linspace(ymin, ymax, num_y).cuda()
+    y, x = torch.meshgrid(x, y)
+    x = x.flatten()
+    y = y.flatten()
+
+    coords = torch.stack([x, y], axis=0)
+    return coords
+
+
+def cam_to_pixel(points, xbound, ybound):
+    new_points = torch.zeros_like(points)
+    new_points[..., 0] = (points[..., 0] - xbound[0]) / xbound[2]
+    new_points[..., 1] = (points[..., 1] - ybound[0]) / ybound[2]
+    return new_points
+
+
+def get_rot_2d(yaw):
+    sin_yaw = torch.sin(yaw)
+    cos_yaw = torch.cos(yaw)
+    rot = torch.zeros(list(yaw.shape) + [2, 2]).cuda()
+    rot[..., 0, 0] = cos_yaw
+    rot[..., 0, 1] = sin_yaw
+    rot[..., 1, 0] = -sin_yaw
+    rot[..., 1, 1] = cos_yaw
+    return rot
+
+
 def get_lidar_data(nusc, sample_rec, nsweeps, min_distance):
     """
     Returns at most nsweeps of lidar in the ego frame.
@@ -377,10 +411,10 @@ def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):
     loader = tqdm(valloader) if use_tqdm else valloader
     with torch.no_grad():
         for batch in loader:
-            allimgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, binimgs = batch
+            allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs = batch
             preds = model(allimgs.to(device), rots.to(device),
                           trans.to(device), intrins.to(device), post_rots.to(device),
-                          post_trans.to(device), z.to(device), yaw.to(device), pitch.to(device), roll.to(device))
+                          post_trans.to(device), translation.to(device), yaw_pitch_roll.to(device))
             binimgs = binimgs.to(device)
 
             # loss
@@ -427,7 +461,7 @@ def add_ego(bx, dx):
         [-4.084 / 2. + 0.5, -W / 2.],
     ])
     pts = (pts - bx) / dx
-    pts[:, [0, 1]] = pts[:, [1, 0]]
+    # pts[:, [0, 1]] = pts[:, [1, 0]]
     plt.fill(pts[:, 0], pts[:, 1], '#76b900')
 
 
@@ -457,13 +491,13 @@ def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx):
     for name in poly_names:
         for la in lmap[name]:
             pts = (la - bx) / dx
-            plt.fill(pts[:, 1], pts[:, 0], c=(1.00, 0.50, 0.31), alpha=0.2)
+            plt.fill(pts[:, 0], pts[:, 1], c=(1.00, 0.50, 0.31), alpha=0.2)
     for la in lmap['road_divider']:
         pts = (la - bx) / dx
-        plt.plot(pts[:, 1], pts[:, 0], c=(0.0, 0.0, 1.0), alpha=0.5)
+        plt.plot(pts[:, 0], pts[:, 1], c=(0.0, 0.0, 1.0), alpha=0.5)
     for la in lmap['lane_divider']:
         pts = (la - bx) / dx
-        plt.plot(pts[:, 1], pts[:, 0], c=(159. / 255., 0.0, 1.0), alpha=0.5)
+        plt.plot(pts[:, 0], pts[:, 1], c=(159. / 255., 0.0, 1.0), alpha=0.5)
 
 
 def get_local_map(nmap, center, stretch, layer_names, line_names):

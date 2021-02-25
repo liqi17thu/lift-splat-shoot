@@ -1,12 +1,12 @@
-import numpy as np
-
 import torch
 from torch import nn
 
 from efficientnet_pytorch import EfficientNet
 from torchvision.models.resnet import resnet18
 
-from .homography import IPM
+from .homography import IPM, bilinear_sampler
+from .tools import plane_grid_2d, get_rot_2d, cam_to_pixel
+
 
 class Up(nn.Module):
     def __init__(self, in_channels, out_channels, scale_factor=2):
@@ -113,6 +113,7 @@ class HDMapNet(nn.Module):
         self.camC = camC
         self.downsample = 16
         self.ipm = IPM(xbound, ybound, N=6, C=camC)
+        # self.ipm = IPM(xbound, ybound, N=6, C=camC, visual=True)
 
         self.camencode = CamEncode(camC)
         self.bevencode = BevEncode(inC=camC, outC=outC)
@@ -127,9 +128,7 @@ class HDMapNet(nn.Module):
         x = x.view(B, N, self.camC, imH//self.downsample, imW//self.downsample)
         return x
 
-    def forward(self, x, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll):
-        x = self.get_cam_feats(x)
-
+    def get_Ks_RTs_and_post_RTs(self, intrins, rots, trans, post_rots, post_trans):
         B, N, _, _ = intrins.shape
         Ks = torch.eye(4, device=intrins.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
         Ks[:, :, :3, :3] = intrins
@@ -152,6 +151,70 @@ class HDMapNet(nn.Module):
         ], dtype=torch.double).cuda()
         post_RTs = scale @ post_RTs
 
-        topdown = self.ipm(x, Ks, RTs, z, yaw, pitch, roll, post_RTs)
+        return Ks, RTs, post_RTs
 
+    def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
+        x = self.get_cam_feats(x)
+
+        Ks, RTs, post_RTs = self.get_Ks_RTs_and_post_RTs(intrins, rots, trans, post_rots, post_trans)
+        topdown = self.ipm(x, Ks, RTs, translation, yaw_pitch_roll, post_RTs)
+
+        return self.bevencode(topdown)
+
+
+class TemporalHDMapNet(HDMapNet):
+    def __init__(self, xbound, ybound, outC, camC=64):
+        super(TemporalHDMapNet, self).__init__(xbound, ybound, outC, camC)
+
+    def get_cam_feats(self, x):
+        """Return B x T x N x H/downsample x W/downsample x C
+        """
+        B, T, N, C, imH, imW = x.shape
+
+        x = x.view(B*T*N, C, imH, imW)
+        x = self.camencode(x)
+        x = x.view(B, T, N, self.camC, imH//self.downsample, imW//self.downsample)
+        return x
+
+    def temporal_fusion(self, topdown, translation, yaw):
+        B, T, C, H, W = topdown.shape
+
+        # translation: B, T, 3
+        # yaw: B, T
+        # rot: B, T, 2, 2
+
+        # B, T, 2, H*W
+        grid = plane_grid_2d(self.xbound, self.ybound).view(1, 1, 2, H*W).repeat(B, T, 1, 1)
+        rot0 = get_rot_2d(yaw)
+        trans0 = translation[:, :, :2].view(B, T, 2, 1)
+        rot1 = get_rot_2d(yaw[:, 0].view(B, 1).repeat(1, T))
+        trans1 = translation[:, 0, :2].view(B, 1, 2, 1).repeat(1, T, 1, 1)
+        grid = rot1.transpose(2, 3) @ grid
+        grid = grid + trans1
+        grid = grid - trans0
+        grid = rot0 @ grid
+        grid = grid.view(B*T, 2, H, W).permute(0, 2, 3, 1)
+        grid = cam_to_pixel(grid, self.xbound, self.ybound)
+        topdown = topdown.view(B*T, C, H, W).permute(0, 2, 3, 1)
+        topdown = bilinear_sampler(topdown, grid)
+        topdown = topdown.view(B, T, H, W, C)
+        topdown = topdown.max(1)[0]
+        topdown = topdown.permute(0, 3, 1, 2)
+        return topdown
+
+    def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
+        x = self.get_cam_feats(x)
+        B, T, N, C, h, w = x.shape
+
+        x = x.view(B*T, N, C, h, w)
+        intrins = intrins.view(B*T, N, 3, 3)
+        rots = rots.view(B*T, N, 3, 3)
+        trans = trans.view(B*T, N, 3)
+        post_rots = post_rots.view(B*T, N, 3, 3)
+        post_trans = post_trans.view(B*T, N, 3)
+        Ks, RTs, post_RTs = self.get_Ks_RTs_and_post_RTs(intrins, rots, trans, post_rots, post_trans)
+        topdown = self.ipm(x, Ks, RTs, translation, yaw_pitch_roll, post_RTs)
+        _, C, H, W = topdown.shape
+        topdown = topdown.view(B, T, C, H, W)
+        topdown = self.temporal_fusion(topdown, translation, yaw_pitch_roll[..., 0])
         return self.bevencode(topdown)
