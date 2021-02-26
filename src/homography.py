@@ -56,7 +56,7 @@ def perspective(cam_coords, proj_mat, h, w):
         pix coords:         [B, h, w, 2]
     """
     eps = 1e-7
-    pix_coords = proj_mat @ cam_coords
+    pix_coords = proj_mat.float() @ cam_coords.float()
 
     N, _, _ = pix_coords.shape
 
