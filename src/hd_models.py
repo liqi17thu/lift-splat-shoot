@@ -179,24 +179,24 @@ class TemporalHDMapNet(HDMapNet):
     def temporal_fusion(self, topdown, translation, yaw):
         B, T, C, H, W = topdown.shape
 
-        # translation: B, T, 3
-        # yaw: B, T
-        # rot: B, T, 2, 2
+        if T == 1:
+            return topdown[:, 0]
 
-        # B, T, 2, H*W
-        grid = plane_grid_2d(self.xbound, self.ybound).view(1, 1, 2, H*W).repeat(B, T, 1, 1)
-        rot0 = get_rot_2d(yaw)
-        trans0 = translation[:, :, :2].view(B, T, 2, 1)
-        rot1 = get_rot_2d(yaw[:, 0].view(B, 1).repeat(1, T))
-        trans1 = translation[:, 0, :2].view(B, 1, 2, 1).repeat(1, T, 1, 1)
+        grid = plane_grid_2d(self.xbound, self.ybound).view(1, 1, 2, H*W).repeat(B, T-1, 1, 1)
+        rot0 = get_rot_2d(yaw[:, 1:])
+        trans0 = translation[:, 1:, :2].view(B, T-1, 2, 1)
+        rot1 = get_rot_2d(yaw[:, 0].view(B, 1).repeat(1, T-1))
+        trans1 = translation[:, 0, :2].view(B, 1, 2, 1).repeat(1, T-1, 1, 1)
         grid = rot1.transpose(2, 3) @ grid
         grid = grid + trans1
         grid = grid - trans0
         grid = rot0 @ grid
-        grid = grid.view(B*T, 2, H, W).permute(0, 2, 3, 1)
+        grid = grid.view(B*(T-1), 2, H, W).permute(0, 2, 3, 1)
         grid = cam_to_pixel(grid, self.xbound, self.ybound)
-        topdown = topdown.view(B*T, C, H, W).permute(0, 2, 3, 1)
-        topdown = bilinear_sampler(topdown, grid)
+        topdown = topdown.permute(0, 1, 3, 4, 2)
+        prev_topdown = topdown[:, 1:]
+        warped_prev_topdown = bilinear_sampler(prev_topdown.view(B*(T-1), H, W, C), grid).view(B, T-1, H, W, C)
+        topdown = torch.cat([topdown[:, 0].unsqueeze(1), warped_prev_topdown], axis=1)
         topdown = topdown.view(B, T, H, W, C)
         topdown = topdown.max(1)[0]
         topdown = topdown.permute(0, 3, 1, 2)
