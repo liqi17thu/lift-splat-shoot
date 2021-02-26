@@ -158,7 +158,7 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     rotation_matrix = rotation_from_euler(rolls, pitchs, yaws).cuda()
 
     coords = rotation_matrix @ coords
-    return coords
+    return coords.float()
 
 
 def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
@@ -255,7 +255,7 @@ class IPM(nn.Module):
         images = images.reshape(B*N, H, W, C)
         warped_fv_images = ipm_from_parameters(images, planes, Ks, RTs, self.h, self.w, post_RTs)
         warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
-        warped_fv_images = self.mask_warped(warped_fv_images)
+        # warped_fv_images = self.mask_warped(warped_fv_images)
 
         if self.visual:
             warped_topdown = warped_fv_images[:, CAM_F] + warped_fv_images[:, CAM_B]  # CAM_FRONT + CAM_BACK
