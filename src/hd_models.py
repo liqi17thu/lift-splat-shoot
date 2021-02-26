@@ -1,3 +1,5 @@
+import numpy as np
+
 import torch
 from torch import nn
 
@@ -130,25 +132,25 @@ class HDMapNet(nn.Module):
 
     def get_Ks_RTs_and_post_RTs(self, intrins, rots, trans, post_rots, post_trans):
         B, N, _, _ = intrins.shape
-        Ks = torch.eye(4, device=intrins.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        Ks = torch.eye(4, device=intrins.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
         Ks[:, :, :3, :3] = intrins
 
-        Rs = torch.eye(4, device=rots.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        Rs = torch.eye(4, device=rots.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
         Rs[:, :, :3, :3] = rots.transpose(-1, -2)
-        Ts = torch.eye(4, device=trans.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        Ts = torch.eye(4, device=trans.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
         Ts[:, :, :3, 3] = -trans
         RTs = Rs @ Ts
 
-        post_RTs = torch.eye(4, device=post_rots.device, dtype=torch.double).view(1, 1, 4, 4).repeat(B, N, 1, 1)
+        post_RTs = torch.eye(4, device=post_rots.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
         post_RTs[:, :, :3, :3] = post_rots
         post_RTs[:, :, :3, 3] = post_trans
 
-        scale = torch.tensor([
+        scale = torch.Tensor([
             [1/self.downsample, 0, 0, 0],
             [0, 1/self.downsample, 0, 0],
             [0, 0, 1, 0],
             [0, 0, 0, 1]
-        ], dtype=torch.double).cuda()
+        ]).cuda()
         post_RTs = scale @ post_RTs
 
         return Ks, RTs, post_RTs
@@ -159,6 +161,10 @@ class HDMapNet(nn.Module):
         Ks, RTs, post_RTs = self.get_Ks_RTs_and_post_RTs(intrins, rots, trans, post_rots, post_trans)
         topdown = self.ipm(x, Ks, RTs, translation, yaw_pitch_roll, post_RTs)
 
+        # with open('master_cam_topdown.npy', 'wb') as f:
+        #     np.save(f, topdown.cpu().detach().numpy())
+
+        # import ipdb; ipdb.set_trace()
         return self.bevencode(topdown)
 
 

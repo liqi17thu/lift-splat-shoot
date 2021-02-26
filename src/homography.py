@@ -56,7 +56,13 @@ def perspective(cam_coords, proj_mat, h, w):
         pix coords:         [B, h, w, 2]
     """
     eps = 1e-7
-    pix_coords = proj_mat.float() @ cam_coords.float()
+    pix_coords = proj_mat @ cam_coords
+    # with open('master_proj_mat.npy', 'wb') as f:
+    #     np.save(f, proj_mat.cpu().detach().numpy())
+    # with open('master_cam_coords.npy', 'wb') as f:
+    #     np.save(f, cam_coords.cpu().detach().numpy())
+    # with open('master_pix_coords.npy', 'wb') as f:
+    #     np.save(f, pix_coords.cpu().detach().numpy())
 
     N, _, _ = pix_coords.shape
 
@@ -159,7 +165,7 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     rotation_matrix = rotation_from_euler(rolls, pitchs, yaws).cuda()
 
     coords = rotation_matrix @ coords
-    return coords
+    return coords.float()
 
 
 def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
@@ -179,6 +185,8 @@ def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
     pixel_coords = perspective(xyz, P, target_h, target_w)
     image2 = bilinear_sampler(image, pixel_coords)
     image2 = image2.type_as(image)
+    # with open('master_bilinear_sampled', 'wb') as f:
+    #     np.save(f, image2.detach().cpu().numpy())
     return image2
 
 
@@ -263,7 +271,7 @@ class IPM(nn.Module):
         images = images.reshape(B*N, H, W, C)
         warped_fv_images = ipm_from_parameters(images, planes, Ks, RTs, self.h, self.w, post_RTs)
         warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
-        warped_fv_images = self.mask_warped(warped_fv_images)
+        # warped_fv_images = self.mask_warped(warped_fv_images)
 
         if self.visual:
             warped_topdown = warped_fv_images[:, CAM_F] + warped_fv_images[:, CAM_B]  # CAM_FRONT + CAM_BACK
