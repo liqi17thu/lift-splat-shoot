@@ -16,12 +16,11 @@ from nuscenes.utils.data_classes import Box
 from glob import glob
 import torchvision
 
-from .topdown_mask import gen_topdown_mask, MyNuScenesMap
+from .topdown_mask import gen_topdown_mask, MyNuScenesMap, extract_contour
 from .tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx
-from .tools import random_erasing
+from .tools import random_erasing, label_onehot_encoding
 
 MAP = ['boston-seaport', 'singapore-hollandvillage', 'singapore-onenorth', 'singapore-queenstown']
-from .topdown_mask import LINE_WIDTH
 ONE_CLASS = False
 
 
@@ -36,9 +35,8 @@ class NuscData(torch.utils.data.Dataset):
         self.scenes = self.get_scenes()
         self.ixes = self.prepro()
 
-        # hack to change line width
-        # global LINE_WIDTH
-        # LINE_WIDTH = data_aug_conf['line_width']
+        self.preprocess = data_aug_conf['preprocess']
+        self.thickness = data_aug_conf['line_width']
 
         dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
         self.dx, self.bx, self.nx = dx.numpy(), bx.numpy(), nx.numpy()
@@ -233,37 +231,39 @@ class NuscData(torch.utils.data.Dataset):
         return torch.Tensor(img).unsqueeze(0)
 
     def get_lineimg(self, rec):
-        seg_layers = ['lane', 'road_segment', 'road_divider', 'lane_divider']
+        if self.preprocess:
+            lidar_top_path = self.nusc.get_sample_data_path(rec['data']['LIDAR_TOP'])
+            seg_path = lidar_top_path.split('.')[0] + '_seg_mask.png'
+            inst_path = lidar_top_path.split('.')[0] + '_inst_mask.png'
+            seg_mask = torch.tensor(np.array(Image.open(seg_path)))
+            inst_mask = torch.tensor(np.array(Image.open(inst_path)))
+            seg_mask = label_onehot_encoding(seg_mask)
 
-        mask = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers)
+            return seg_mask, inst_mask
 
-        # contours
-        contours_mask = np.zeros(self.canvas_size)
-        lane_mask = np.any(mask[:2], 0).astype('uint8') * 255
-        ret, thresh = cv2.threshold(lane_mask, 127, 255, 0)
-        contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(contours_mask, contours, -1, 1, LINE_WIDTH)
+        line_seg_layers = ['road_divider', 'lane_divider', 'ped_crossing_line']
+        lane_seg_layers = ['road_segment', 'lane']
 
-        contours_mask[:LINE_WIDTH, :] = 0
-        contours_mask[-LINE_WIDTH:, :] = 0
-        contours_mask[:, :LINE_WIDTH] = 0
-        contours_mask[:, -LINE_WIDTH:] = 0
+        line_mask, line_inst = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness)
+        lane_mask, lane_inst = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=lane_seg_layers, thickness=self.thickness)
 
-        # dividers
-        dividers_mask = np.any(mask[2:], 0)
-        dividers_mask[contours_mask != 0] = 0
+        cum_inst = np.cumsum(line_inst)
+        for i in range(1, line_mask.shape[0]):
+            line_mask[i][line_mask[i] != 0] += cum_inst[i-1]
+        instance_mask = np.sum(line_mask, 0).astype('int32')
 
-        # final
-        final_mask = np.stack([contours_mask, dividers_mask])
-        background_mask = (1 - np.any(final_mask, 0))[None]
-        final_mask = np.concatenate([background_mask, final_mask])
+        contour_mask, contour_inst = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness)
+        contour_mask[contour_mask != 0] += cum_inst[-1]
+        instance_mask[contour_mask != 0] = contour_mask[contour_mask != 0]
 
-        return torch.Tensor(final_mask)
+        seg_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
+        seg_mask[3] = contour_mask != 0
+        seg_mask[2] = (line_mask[2] != 0) & (seg_mask[3] == 0)
+        seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0) & (seg_mask[3] == 0)
+        seg_mask[0] = 1 - np.any(seg_mask, axis=0)
 
-        # lidar_top_path = self.nusc.get_sample_data_path(rec['data']['LIDAR_TOP'])
-        # line_path = lidar_top_path.split('.')[0] + '_line_mask.png'
-        # img = np.array(Image.open(line_path))
-        # return torch.Tensor(img).unsqueeze(0)
+        return torch.Tensor(seg_mask), torch.Tensor(instance_mask)
+
 
     def choose_cams(self):
         if self.is_train and self.data_aug_conf['Ncams'] < len(self.data_aug_conf['cams']):
@@ -289,11 +289,11 @@ class VizData(NuscData):
         rec = self.ixes[index]
 
         cams = self.choose_cams()
-        imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll = self.get_image_data(rec, cams)
+        imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll = self.get_image_data(rec, cams)
         lidar_data = self.get_lidar_data(rec, nsweeps=3)
-        binimg = self.get_lineimg(rec)
+        seg_mask = self.get_lineimg(rec)
 
-        return imgs, rots, trans, intrins, post_rots, post_trans, z, yaw, pitch, roll, lidar_data, binimg
+        return imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, lidar_data, seg_mask
 
 
 class SegmentationData(NuscData):
@@ -305,9 +305,9 @@ class SegmentationData(NuscData):
 
         cams = self.choose_cams()
         imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll = self.get_image_data(rec, cams)
-        binimg = self.get_lineimg(rec)
+        seg_mask, _ = self.get_lineimg(rec)
 
-        return imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimg
+        return imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, seg_mask
 
 
 class TemporalSegmentationData(NuscData):
