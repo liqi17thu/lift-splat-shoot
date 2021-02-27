@@ -389,8 +389,8 @@ def viz_model_preds(version,
 
 def viz_model_preds_class3(version,
                             modelf,
-                            dataroot='/data/nuscenes',
-                            map_folder='/data/nuscenes/mini',
+                            dataroot='data/nuScenes',
+                            map_folder='data/nuScenes',
                             gpuid=1,
                             viz_train=False,
                             outC=3,
@@ -431,9 +431,16 @@ def viz_model_preds_class3(version,
                     'cams': cams,
                     'Ncams': 5,
                 }
+
+    temporal = 'temporal' in method
+    if temporal:
+        parser_name = 'temporalsegmentationdata'
+    else:
+        parser_name = 'segmentationdata'
+
     trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='segmentationdata')
+                                          parser_name=parser_name)
     loader = trainloader if viz_train else valloader
     nusc_maps = get_nusc_maps(map_folder)
 
@@ -480,6 +487,8 @@ def viz_model_preds_class3(version,
                     )
             out = out.softmax(1).cpu()
 
+            if temporal:
+                imgs = imgs[:, 0]
             for si in range(imgs.shape[0]):
                 plt.clf()
                 for imgi, img in enumerate(imgs[si]):
