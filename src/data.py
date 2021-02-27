@@ -237,7 +237,7 @@ class NuscData(torch.utils.data.Dataset):
             inst_path = lidar_top_path.split('.')[0] + '_inst_mask.png'
             seg_mask = torch.tensor(np.array(Image.open(seg_path)))
             inst_mask = torch.tensor(np.array(Image.open(inst_path)))
-            seg_mask = label_onehot_encoding(seg_mask)
+            seg_mask = label_onehot_encoding(seg_mask, num_classes=4)
 
             return seg_mask, inst_mask
 

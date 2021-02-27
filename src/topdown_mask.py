@@ -224,10 +224,7 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
         def add_line(poly_xy, idx, patch, patch_angle, patch_x, patch_y, line_list):
             points = [(p0, p1) for p0, p1 in zip(poly_xy[0, idx:idx + 2], poly_xy[1, idx:idx + 2])]
             line = LineString(points)
-            line = affinity.rotate(line, -patch_angle, origin=(patch_x, patch_y), use_radians=False)
-            line = affinity.affine_transform(line, [1.0, 0.0, 0.0, 1.0, -patch_x, -patch_y])
             line.intersection(patch)
-
             if not line.is_empty:
                 line = affinity.rotate(line, -patch_angle, origin=(patch_x, patch_y), use_radians=False)
                 line = affinity.affine_transform(line, [1.0, 0.0, 0.0, 1.0, -patch_x, -patch_y])

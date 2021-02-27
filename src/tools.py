@@ -344,10 +344,9 @@ def label_onehot_decoding(onehot):
     return torch.argmax(onehot, axis=0)
 
 
-def label_onehot_encoding(label):
-    class_num = int(torch.max(label))+1
+def label_onehot_encoding(label, num_classes=4):
     H, W = label.shape
-    onehot = torch.zeros((class_num, H, W))
+    onehot = torch.zeros((num_classes, H, W))
     onehot.scatter_(0, label[None].long(), 1)
     return onehot
 
