@@ -340,6 +340,18 @@ def get_accuracy_precision_recall(preds, binimgs):
     return tot, cor, tp, fp, fn
 
 
+def label_onehot_decoding(onehot):
+    return torch.argmax(onehot, axis=0)
+
+
+def label_onehot_encoding(label):
+    class_num = int(torch.max(label))+1
+    H, W = label.shape
+    onehot = torch.zeros((class_num, H, W))
+    onehot.scatter_(0, label[None].long(), 1)
+    return onehot
+
+
 def onehot_encoding(logits, dim=1):
     max_idx = torch.argmax(logits, dim, keepdim=True)
     one_hot = logits.new_full(logits.shape, 0)
