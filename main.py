@@ -14,6 +14,7 @@ if __name__ == '__main__':
         'lidar_check': src.explore.lidar_check,
         'cumsum_check': src.explore.cumsum_check,
 
+        'gen_data': src.explore.gen_data,
         'train': src.train.train,
         'eval_model': src.explore.eval_model,
         'viz_model_preds': src.explore.viz_model_preds,

@@ -3,21 +3,92 @@ Copyright (C) 2020 NVIDIA Corporation.  All rights reserved.
 Licensed under the NVIDIA Source Code License. See LICENSE at https://github.com/nv-tlabs/lift-splat-shoot.
 Authors: Jonah Philion and Sanja Fidler
 """
+import os
+import random
 
 import torch
 import numpy as np
 import matplotlib as mpl
+import tqdm
+
+from nuscenes import NuScenes
+
+from .topdown_mask import MyNuScenesMap
+
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 from PIL import Image
 import matplotlib.patches as mpatches
 
-from .data import compile_data
+from .data import compile_data, MAP, NuscData
 from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
                     SimpleLoss, get_val_info, add_ego, gen_dx_bx,
                     get_nusc_maps, plot_nusc_map)
+from .tools import label_onehot_decoding
 from .models import compile_model
 from .hd_models import HDMapNet, TemporalHDMapNet
+
+
+def gen_data(version,
+            dataroot='data/nuScenes',
+
+            H=900, W=1600,
+            resize_lim=(0.193, 0.225),
+            final_dim=(128, 352),
+            bot_pct_lim=(0.0, 0.22),
+            rot_lim=(-5.4, 5.4),
+            rand_flip=False,
+            ncams=6,
+            line_width=5,
+            preprocess=True,
+            overwrite=False,
+
+            xbound=[-30.0, 30.0, 0.15],
+            ybound=[-15.0, 15.0, 0.15],
+            zbound=[-10.0, 10.0, 20.0],
+            dbound=[4.0, 45.0, 1.0],
+          ):
+    grid_conf = {
+        'xbound': xbound,
+        'ybound': ybound,
+        'zbound': zbound,
+        'dbound': dbound,
+    }
+    data_aug_conf = {
+                    'resize_lim': resize_lim,
+                    'final_dim': final_dim,
+                    'rot_lim': rot_lim,
+                    'H': H, 'W': W,
+                    'rand_flip': rand_flip,
+                    'bot_pct_lim': bot_pct_lim,
+                    'preprocess': preprocess,
+                    'line_width': line_width,
+                    'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
+                    'Ncams': ncams,
+                }
+
+    nusc = NuScenes(version='v1.0-{}'.format(version),
+                    dataroot=dataroot,
+                    verbose=False)
+    nusc_maps = {}
+    for map_name in MAP:
+        nusc_maps[map_name] = MyNuScenesMap(dataroot=dataroot, map_name=map_name)
+
+    random.shuffle(nusc.sample)
+    nusc_data = NuscData(nusc, nusc_maps, False, data_aug_conf, grid_conf)
+    for rec in tqdm.tqdm(nusc.sample):
+        lidar_top_path = nusc.get_sample_data_path(rec['data']['LIDAR_TOP'])
+        seg_path = lidar_top_path.split('.')[0] + '_seg_mask.png'
+        inst_path = lidar_top_path.split('.')[0] + '_inst_mask.png'
+        if os.path.exists(seg_path) and os.path.exists(inst_path) and not overwrite:
+            continue
+
+        seg_mask, inst_mask = nusc_data.get_lineimg(rec)
+        seg_mask = label_onehot_decoding(seg_mask)
+
+        Image.fromarray(seg_mask.numpy().astype('uint8')).save(seg_path)
+        Image.fromarray(inst_mask.numpy().astype('uint8')).save(inst_path)
 
 
 def lidar_check(version,
@@ -391,17 +462,18 @@ def viz_model_preds_class3(version,
                             modelf,
                             dataroot='data/nuScenes',
                             map_folder='data/nuScenes',
-                            gpuid=1,
+                            gpuid=0,
                             viz_train=False,
-                            outC=3,
+                            outC=4,
                             method='temporal_HDMapNet',
 
+                            preprocess=False,
                             H=900, W=1600,
                             resize_lim=(0.193, 0.225),
                             final_dim=(128, 352),
                             bot_pct_lim=(0.0, 0.22),
                             rot_lim=(-5.4, 5.4),
-                            line_width=5,
+                            line_width=2,
                             rand_flip=True,
 
                             xbound=[-30.0, 30.0, 0.15],
@@ -427,13 +499,21 @@ def viz_model_preds_class3(version,
                     'H': H, 'W': W,
                     'rand_flip': rand_flip,
                     'line_width': line_width,
+                    'preprocess': preprocess,
                     'bot_pct_lim': bot_pct_lim,
                     'cams': cams,
                     'Ncams': 5,
                 }
+
+    temporal = 'temporal' in method
+    if temporal:
+        parser_name = 'temporalsegmentationdata'
+    else:
+        parser_name = 'segmentationdata'
+
     trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='segmentationdata')
+                                          parser_name=parser_name)
     loader = trainloader if viz_train else valloader
     nusc_maps = get_nusc_maps(map_folder)
 
@@ -480,6 +560,11 @@ def viz_model_preds_class3(version,
                     )
             out = out.softmax(1).cpu()
 
+            if temporal:
+                imgs = imgs[:, 0]
+            # visualization
+            binimgs[binimgs < 0.1] = np.nan
+            out[out < 0.1] = np.nan
             for si in range(imgs.shape[0]):
                 plt.clf()
                 for imgi, img in enumerate(imgs[si]):
@@ -502,15 +587,13 @@ def viz_model_preds_class3(version,
                 #     mpatches.Patch(color=(1.00, 0.50, 0.31, 0.8), label='Map (for visualization purposes only)')
                 # ], loc=(0.01, 0.86))
 
-                import numpy as np
-                out[out < 0.1] = np.nan
                 plt.imshow(out[si][1], vmin=0, vmax=1, cmap='Blues', alpha=0.8)
                 plt.imshow(out[si][2], vmin=0, vmax=1, cmap='Reds', alpha=0.8)
+                plt.imshow(out[si][3], vmin=0, vmax=1, cmap='Greens', alpha=0.8)
 
-                binimgs[binimgs < 0.1] = np.nan
                 plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-                # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+                plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
                 # plt.imshow(out[si].transpose(0, -1), vmin=0, vmax=1, cmap='Blues', alpha=0.6)
 
