@@ -39,7 +39,7 @@ def write_log(writer, loss, ious, acces, precs, recalls, title, counter):
 
 
 def train(version,
-          dataroot='/data/nuscenes',
+          dataroot='data/nuScenes',
           nepochs=30,
           gpuid=1,
           outC=3,

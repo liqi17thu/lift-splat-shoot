@@ -389,8 +389,8 @@ def viz_model_preds(version,
 
 def viz_model_preds_class3(version,
                             modelf,
-                            dataroot='/data/nuscenes',
-                            map_folder='/data/nuscenes/mini',
+                            dataroot='data/nuScenes',
+                            map_folder='data/nuScenes',
                             gpuid=1,
                             viz_train=False,
                             outC=3,
@@ -510,6 +510,7 @@ def viz_model_preds_class3(version,
                 binimgs[binimgs < 0.1] = np.nan
                 plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
                 # plt.imshow(out[si].transpose(0, -1), vmin=0, vmax=1, cmap='Blues', alpha=0.6)
 
