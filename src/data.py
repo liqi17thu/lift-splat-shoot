@@ -317,6 +317,7 @@ class TemporalSegmentationData(NuscData):
 
     def __getitem__(self, index):
         rec = self.ixes[index]
+        binimg = self.get_lineimg(rec)
 
         cams = self.choose_cams()
         imgs_t = []
@@ -342,8 +343,6 @@ class TemporalSegmentationData(NuscData):
             T -= 1
             if rec['prev'] != '':
                 rec = self.nusc.get('sample', rec['prev'])
-
-        binimg = self.get_lineimg(rec)
 
         imgs_t = torch.stack(imgs_t)
         rots_t = torch.stack(rots_t)

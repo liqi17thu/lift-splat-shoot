@@ -504,9 +504,16 @@ def viz_model_preds_class3(version,
                     'cams': cams,
                     'Ncams': 5,
                 }
+
+    temporal = 'temporal' in method
+    if temporal:
+        parser_name = 'temporalsegmentationdata'
+    else:
+        parser_name = 'segmentationdata'
+
     trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='segmentationdata')
+                                          parser_name=parser_name)
     loader = trainloader if viz_train else valloader
     nusc_maps = get_nusc_maps(map_folder)
 
@@ -553,7 +560,11 @@ def viz_model_preds_class3(version,
                     )
             out = out.softmax(1).cpu()
 
+            if temporal:
+                imgs = imgs[:, 0]
+            # visualization
             binimgs[binimgs < 0.1] = np.nan
+            out[out < 0.1] = np.nan
             for si in range(imgs.shape[0]):
                 plt.clf()
                 for imgi, img in enumerate(imgs[si]):
@@ -576,7 +587,6 @@ def viz_model_preds_class3(version,
                 #     mpatches.Patch(color=(1.00, 0.50, 0.31, 0.8), label='Map (for visualization purposes only)')
                 # ], loc=(0.01, 0.86))
 
-                out[out < 0.1] = np.nan
                 plt.imshow(out[si][1], vmin=0, vmax=1, cmap='Blues', alpha=0.8)
                 plt.imshow(out[si][2], vmin=0, vmax=1, cmap='Reds', alpha=0.8)
                 plt.imshow(out[si][3], vmin=0, vmax=1, cmap='Greens', alpha=0.8)

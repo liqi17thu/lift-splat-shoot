@@ -182,7 +182,6 @@ class TemporalHDMapNet(HDMapNet):
         if T == 1:
             return topdown[:, 0]
 
-        # B, T, 2, H*W
         grid = plane_grid_2d(self.xbound, self.ybound).view(1, 1, 2, H*W).repeat(B, T-1, 1, 1)
         rot0 = get_rot_2d(yaw[:, 1:])
         trans0 = translation[:, 1:, :2].view(B, T-1, 2, 1)
@@ -196,7 +195,8 @@ class TemporalHDMapNet(HDMapNet):
         grid = cam_to_pixel(grid, self.xbound, self.ybound)
         topdown = topdown.permute(0, 1, 3, 4, 2)
         prev_topdown = topdown[:, 1:]
-        topdown[:, 1:] = bilinear_sampler(prev_topdown.view(B*(T-1), H, W, C), grid).view(B, T-1, H, W, C)
+        warped_prev_topdown = bilinear_sampler(prev_topdown.view(B*(T-1), H, W, C), grid).view(B, T-1, H, W, C)
+        topdown = torch.cat([topdown[:, 0].unsqueeze(1), warped_prev_topdown], axis=1)
         topdown = topdown.view(B, T, H, W, C)
         topdown = topdown.max(1)[0]
         topdown = topdown.permute(0, 3, 1, 2)
