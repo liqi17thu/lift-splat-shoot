@@ -11,11 +11,11 @@ import numpy as np
 import matplotlib as mpl
 import tqdm
 
-from nuscenes import NuScenes
+mpl.use('Agg')
 
+from nuscenes import NuScenes
 from .topdown_mask import MyNuScenesMap
 
-mpl.use('Agg')
 import matplotlib.pyplot as plt
 from PIL import Image
 import matplotlib.patches as mpatches

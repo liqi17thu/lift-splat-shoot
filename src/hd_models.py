@@ -195,7 +195,7 @@ class TemporalHDMapNet(HDMapNet):
         grid = cam_to_pixel(grid, self.xbound, self.ybound)
         topdown = topdown.permute(0, 1, 3, 4, 2)
         prev_topdown = topdown[:, 1:]
-        warped_prev_topdown = bilinear_sampler(prev_topdown.view(B*(T-1), H, W, C), grid).view(B, T-1, H, W, C)
+        warped_prev_topdown = bilinear_sampler(prev_topdown.reshape(B*(T-1), H, W, C), grid).view(B, T-1, H, W, C)
         topdown = torch.cat([topdown[:, 0].unsqueeze(1), warped_prev_topdown], axis=1)
         topdown = topdown.view(B, T, H, W, C)
         topdown = topdown.max(1)[0]
