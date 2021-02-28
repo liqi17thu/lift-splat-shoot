@@ -40,7 +40,7 @@ def gen_data(version,
             rand_flip=False,
             ncams=6,
             line_width=5,
-            preprocess=True,
+            preprocess=False,
             overwrite=False,
 
             xbound=[-30.0, 30.0, 0.15],

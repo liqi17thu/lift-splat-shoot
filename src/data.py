@@ -256,16 +256,16 @@ class NuscData(torch.utils.data.Dataset):
         contour_mask[contour_mask != 0] += cum_inst[-1]
         instance_mask[contour_mask != 0] = contour_mask[contour_mask != 0]
 
-        # seg_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
-        # seg_mask[3] = contour_mask != 0
-        # seg_mask[2] = (line_mask[2] != 0) & (seg_mask[3] == 0)
-        # seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0) & (seg_mask[3] == 0)
-        # seg_mask[0] = 1 - np.any(seg_mask, axis=0)
-
-        seg_mask = np.zeros((3, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
-        seg_mask[2] = contour_mask != 0
-        seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0)
+        seg_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
+        seg_mask[3] = contour_mask != 0
+        seg_mask[2] = (line_mask[2] != 0) & (seg_mask[3] == 0)
+        seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0) & (seg_mask[3] == 0)
         seg_mask[0] = 1 - np.any(seg_mask, axis=0)
+
+        # seg_mask = np.zeros((3, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
+        # seg_mask[2] = contour_mask != 0
+        # seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0)
+        # seg_mask[0] = 1 - np.any(seg_mask, axis=0)
 
         return torch.Tensor(seg_mask), torch.Tensor(instance_mask)
 
@@ -310,9 +310,9 @@ class SegmentationData(NuscData):
 
         cams = self.choose_cams()
         imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll = self.get_image_data(rec, cams)
-        seg_mask, _ = self.get_lineimg(rec)
+        seg_mask, inst_mask = self.get_lineimg(rec)
 
-        return imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, seg_mask
+        return imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, seg_mask, inst_mask
 
 
 class TemporalSegmentationData(NuscData):
@@ -322,7 +322,7 @@ class TemporalSegmentationData(NuscData):
 
     def __getitem__(self, index):
         rec = self.ixes[index]
-        seg_mask, _ = self.get_lineimg(rec)
+        seg_mask, inst_mask = self.get_lineimg(rec)
 
         cams = self.choose_cams()
         imgs_t = []
@@ -357,7 +357,7 @@ class TemporalSegmentationData(NuscData):
         post_trans_t = torch.stack(post_trans_t)
         translation_t = torch.stack(translation_t)
         yaw_pitch_roll_t = torch.stack(yaw_pitch_roll_t)
-        return imgs_t, rots_t, trans_t, intrins_t, post_rots_t, post_trans_t, translation_t, yaw_pitch_roll_t, seg_mask
+        return imgs_t, rots_t, trans_t, intrins_t, post_rots_t, post_trans_t, translation_t, yaw_pitch_roll_t, seg_mask, inst_mask
 
 
 def worker_rnd_init(x):

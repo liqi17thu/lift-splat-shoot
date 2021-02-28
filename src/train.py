@@ -16,13 +16,12 @@ from .models import compile_model
 from .data import compile_data
 from .tools import get_batch_iou_multi_class, get_val_info
 from .tools import get_accuracy_precision_recall_multi_class
-from .tools import FocalLoss, SimpleLoss
+from .tools import FocalLoss, SimpleLoss, DiscriminativeLoss
 from .hd_models import HDMapNet
 from .hd_models import TemporalHDMapNet
 
 
-def write_log(writer, loss, ious, acces, precs, recalls, title, counter):
-    writer.add_scalar(f'{title}/loss', loss, counter)
+def write_log(writer, ious, acces, precs, recalls, title, counter):
     writer.add_scalar(f'{title}/iou', np.mean(ious[1:]), counter)
     writer.add_scalar(f'{title}/acc', np.mean(acces[1:]), counter)
     writer.add_scalar(f'{title}/prec', np.mean(precs[1:]), counter)
@@ -63,6 +62,15 @@ def train(version,
           zbound=[-10.0, 10.0, 20.0],
           dbound=[4.0, 45.0, 1.0],
 
+          embedded_dim=16,
+
+          delta_v=0.5,
+          delta_d=3.0,
+
+          scale_seg=1.0,
+          scale_var=1.0,
+          scale_dist=1.0,
+
           bsz=4,
           nworkers=10,
           lr=1e-3,
@@ -102,9 +110,9 @@ def train(version,
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
     elif method == 'HDMapNet':
-        model = HDMapNet(xbound, ybound, outC=outC)
+        model = HDMapNet(xbound, ybound, outC=outC, embedded_dim=embedded_dim)
     elif method == 'temporal_HDMapNet':
-        model = TemporalHDMapNet(xbound, ybound, outC=outC)
+        model = TemporalHDMapNet(xbound, ybound, outC=outC, embedded_dim=embedded_dim)
 
     model.to(device)
 
@@ -113,6 +121,7 @@ def train(version,
 
     # loss_fn = FocalLoss(alpha=.25, gamma=2.).cuda(gpuid)
     loss_fn = SimpleLoss(pos_weight).cuda(gpuid)
+    embedded_loss_fn = DiscriminativeLoss(embedded_dim, delta_v, delta_d).cuda(gpuid)
 
     writer = SummaryWriter(logdir=logdir)
     val_step = 1000 if version == 'mini' else 10000
@@ -121,40 +130,52 @@ def train(version,
     counter = 0
     for epoch in range(nepochs):
         np.random.seed()
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs) in enumerate(trainloader):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask) in enumerate(trainloader):
             t0 = time()
             opt.zero_grad()
-            preds = model(imgs.to(device),
-                    rots.to(device),
-                    trans.to(device),
-                    intrins.to(device),
-                    post_rots.to(device),
-                    post_trans.to(device),
-                    translation.to(device),
-                    yaw_pitch_roll.to(device),
-                    )
+            preds, embedded = model(imgs.to(device),
+                                    rots.to(device),
+                                    trans.to(device),
+                                    intrins.to(device),
+                                    post_rots.to(device),
+                                    post_trans.to(device),
+                                    translation.to(device),
+                                    yaw_pitch_roll.to(device),
+                                    )
             binimgs = binimgs.to(device)
-            loss = loss_fn(preds, binimgs)
-            loss.backward()
+            inst_mask = inst_mask.to(device)
+            seg_loss = loss_fn(preds, binimgs)
+            var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask)
+            final_loss = seg_loss * scale_seg + var_loss * scale_var + dist_loss * scale_dist
+            final_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             opt.step()
             counter += 1
             t1 = time()
 
             if counter % 10 == 0:
-                print(counter, loss.item(), t1 - t0)
-                writer.add_scalar('train/loss', loss, counter)
+                print(counter, seg_loss.item(), t1 - t0)
+                writer.add_scalar('train/seg_loss', seg_loss, counter)
+                writer.add_scalar('train/var_loss', var_loss, counter)
+                writer.add_scalar('train/dist_loss', dist_loss, counter)
+                writer.add_scalar('train/reg_loss', reg_loss, counter)
+                writer.add_scalar('train/final_loss', final_loss, counter)
 
             if counter % 50 == 0:
                 _, _, ious = get_batch_iou_multi_class(preds, binimgs)
                 _, _, _, _, _, acces, precs, recalls = get_accuracy_precision_recall_multi_class(preds, binimgs)
-                write_log(writer, loss, ious, acces, precs, recalls, 'train', counter)
+                write_log(writer, ious, acces, precs, recalls, 'train', counter)
                 writer.add_scalar('train/step_time', t1 - t0, counter)
 
             if counter % val_step == 0:
-                val_info = get_val_info(model, valloader, loss_fn, device)
+                val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_var, scale_dist, device)
                 print('VAL', val_info)
-                write_log(writer, val_info['loss'], val_info['iou'], val_info['accuracy'], val_info['precision'], val_info['recall'], 'val', counter)
+                writer.add_scalar('val/seg_loss', val_info['seg_loss'], counter)
+                writer.add_scalar('val/var_loss', val_info['var_loss'], counter)
+                writer.add_scalar('val/dist_loss', val_info['dist_loss'], counter)
+                writer.add_scalar('val/reg_loss', val_info['reg_loss'], counter)
+                writer.add_scalar('val/final_loss', val_info['final_loss'], counter)
+                write_log(writer, val_info['iou'], val_info['accuracy'], val_info['precision'], val_info['recall'], 'val', counter)
 
             if counter % val_step == 0:
                 model.eval()

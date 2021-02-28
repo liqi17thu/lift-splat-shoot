@@ -317,6 +317,68 @@ class SimpleLoss(torch.nn.Module):
         return loss
 
 
+class DiscriminativeLoss(nn.Module):
+    def __init__(self, embed_dim, delta_v, delta_d):
+        super(DiscriminativeLoss, self).__init__()
+        self.embed_dim = embed_dim
+        self.delta_v = delta_v
+        self.delta_d = delta_d
+
+    def forward(self, embedding, seg_gt):
+        bs = embedding.shape[0]
+
+        var_loss = torch.tensor(0, dtype=embedding.dtype, device=embedding.device)
+        dist_loss = torch.tensor(0, dtype=embedding.dtype, device=embedding.device)
+        reg_loss = torch.tensor(0, dtype=embedding.dtype, device=embedding.device)
+
+        for b in range(bs):
+            embedding_b = embedding[b]  # (embed_dim, H, W)
+            seg_gt_b = seg_gt[b]
+
+            labels = torch.unique(seg_gt_b)
+            labels = labels[labels != 0]
+            num_lanes = len(labels)
+            if num_lanes == 0:
+                # please refer to issue here: https://github.com/harryhan618/LaneNet/issues/12
+                _nonsense = embedding.sum()
+                _zero = torch.zeros_like(_nonsense)
+                var_loss = var_loss + _nonsense * _zero
+                dist_loss = dist_loss + _nonsense * _zero
+                reg_loss = reg_loss + _nonsense * _zero
+                continue
+
+            centroid_mean = []
+            for lane_idx in labels:
+                seg_mask_i = (seg_gt_b == lane_idx)
+                if not seg_mask_i.any():
+                    continue
+                embedding_i = embedding_b[:, seg_mask_i]
+
+                mean_i = torch.mean(embedding_i, dim=1)
+                centroid_mean.append(mean_i)
+
+                # ---------- var_loss -------------
+                var_loss = var_loss + torch.mean(F.relu(torch.norm(embedding_i-mean_i.reshape(self.embed_dim, 1), dim=0) - self.delta_v) ** 2) / num_lanes
+            centroid_mean = torch.stack(centroid_mean)  # (n_lane, embed_dim)
+
+            if num_lanes > 1:
+                centroid_mean1 = centroid_mean.reshape(-1, 1, self.embed_dim)
+                centroid_mean2 = centroid_mean.reshape(1, -1, self.embed_dim)
+                dist = torch.norm(centroid_mean1-centroid_mean2, dim=2)  # shape (num_lanes, num_lanes)
+                dist = dist + torch.eye(num_lanes, dtype=dist.dtype, device=dist.device) * self.delta_d  # diagonal elements are 0, now mask above delta_d
+
+                # divided by two for double calculated loss above, for implementation convenience
+                dist_loss = dist_loss + torch.sum(F.relu(-dist + self.delta_d)**2) / (num_lanes * (num_lanes-1)) / 2
+
+            # reg_loss is not used in original paper
+            # reg_loss = reg_loss + torch.mean(torch.norm(centroid_mean, dim=1))
+
+        var_loss = var_loss / bs
+        dist_loss = dist_loss / bs
+        reg_loss = reg_loss / bs
+        return var_loss, dist_loss, reg_loss
+
+
 def get_batch_iou(preds, binimgs):
     """Assumes preds has NOT been sigmoided yet
     """
@@ -408,9 +470,13 @@ def get_accuracy_precision_recall_multi_class(preds, binimgs):
     return tots, cors, tps, fps, fns, cors / tots, tps / (tps + fps + 1e-7), tps / (tps + fns + 1e-7)
 
 
-def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):
+def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_var, scale_dist, device, use_tqdm=False):
     model.eval()
-    total_loss = 0.0
+    total_seg_loss = 0.0
+    total_reg_loss = 0.0
+    total_dist_loss = 0.0
+    total_var_loss = 0.0
+    total_final_loss = 0.0
     total_intersect = None
     total_union = None
     total_pix = None
@@ -422,14 +488,25 @@ def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):
     loader = tqdm(valloader) if use_tqdm else valloader
     with torch.no_grad():
         for batch in loader:
-            allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs = batch
-            preds = model(allimgs.to(device), rots.to(device),
+            allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask = batch
+            preds, embedded = model(allimgs.to(device), rots.to(device),
                           trans.to(device), intrins.to(device), post_rots.to(device),
                           post_trans.to(device), translation.to(device), yaw_pitch_roll.to(device))
             binimgs = binimgs.to(device)
+            inst_mask = inst_mask.to(device)
 
             # loss
-            total_loss += loss_fn(preds, binimgs).item() * preds.shape[0]
+            bs = preds.shape[0]
+            seg_loss = loss_fn(preds, binimgs).item() * bs
+            var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask)
+            var_loss, dist_loss, reg_loss = var_loss.item() * bs, dist_loss.item() * bs, reg_loss.item() * bs
+            final_loss = seg_loss * scale_seg + var_loss + scale_var + dist_loss * scale_dist
+
+            total_seg_loss += seg_loss
+            total_reg_loss += reg_loss
+            total_dist_loss += dist_loss
+            total_var_loss += var_loss
+            total_final_loss += final_loss
 
             # iou
             intersect, union, _ = get_batch_iou_multi_class(preds, binimgs)
@@ -454,7 +531,11 @@ def get_val_info(model, valloader, loss_fn, device, use_tqdm=False):
 
     model.train()
     return {
-        'loss': total_loss / len(valloader.dataset),
+        'seg_loss': total_seg_loss / len(valloader.dataset),
+        'reg_loss': total_reg_loss / len(valloader.dataset),
+        'dist_loss': total_dist_loss / len(valloader.dataset),
+        'var_loss': total_var_loss / len(valloader.dataset),
+        'final_loss': total_final_loss / len(valloader.dataset),
         'iou': total_intersect / total_union,
         'accuracy': total_cor / total_pix,
         'precision': total_tp / (total_tp + total_fp),
