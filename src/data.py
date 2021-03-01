@@ -250,14 +250,14 @@ class NuscData(torch.utils.data.Dataset):
         cum_inst = np.cumsum(line_inst)
         for i in range(1, line_mask.shape[0]):
             line_mask[i][line_mask[i] != 0] += cum_inst[i-1]
-        instance_mask = np.sum(line_mask, 0).astype('int32')
 
         contour_mask, contour_inst = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness)
+        contour_mask[contour_mask != 0] += cum_inst[-1]
         contour_thick_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness+3)
 
-        contour_mask[contour_mask != 0] += cum_inst[-1]
-        instance_mask[contour_thick_mask != 0] = 0
-        instance_mask[contour_mask != 0] = contour_mask[contour_mask != 0]
+        inst_mask = np.sum(line_mask, 0).astype('int32')
+        inst_mask[contour_thick_mask != 0] = 0
+        inst_mask[contour_mask != 0] = contour_mask[contour_mask != 0]
 
         seg_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
         seg_mask[3] = contour_mask != 0
@@ -270,7 +270,7 @@ class NuscData(torch.utils.data.Dataset):
         # seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0)
         # seg_mask[0] = 1 - np.any(seg_mask, axis=0)
 
-        return torch.Tensor(seg_mask), torch.Tensor(instance_mask)
+        return torch.Tensor(seg_mask), torch.Tensor(inst_mask)
 
 
     def choose_cams(self):

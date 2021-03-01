@@ -608,3 +608,156 @@ def viz_model_preds_class3(version,
                 print('saving', imname)
                 plt.savefig(imname)
                 counter += 1
+
+
+from .tools import onehot_encoding
+from .postprocess import LaneNetPostProcessor
+
+
+def viz_model_preds_inst(version,
+                            modelf,
+                            dataroot='data/nuScenes',
+                            map_folder='data/nuScenes',
+                            gpuid=0,
+                            viz_train=False,
+                            outC=4,
+                            method='temporal_HDMapNet',
+
+                            preprocess=False,
+                            H=900, W=1600,
+                            resize_lim=(0.193, 0.225),
+                            final_dim=(128, 352),
+                            bot_pct_lim=(0.0, 0.22),
+                            rot_lim=(-5.4, 5.4),
+                            line_width=2,
+                            rand_flip=True,
+
+                            xbound=[-30.0, 30.0, 0.15],
+                            ybound=[-15.0, 15.0, 0.15],
+                            zbound=[-10.0, 10.0, 20.0],
+                            dbound=[4.0, 45.0, 1.0],
+
+                            bsz=4,
+                            nworkers=10,
+                            ):
+    grid_conf = {
+        'xbound': xbound,
+        'ybound': ybound,
+        'zbound': zbound,
+        'dbound': dbound,
+    }
+    cams = ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+            'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
+    data_aug_conf = {
+                    'resize_lim': resize_lim,
+                    'final_dim': final_dim,
+                    'rot_lim': rot_lim,
+                    'H': H, 'W': W,
+                    'rand_flip': rand_flip,
+                    'line_width': line_width,
+                    'preprocess': preprocess,
+                    'bot_pct_lim': bot_pct_lim,
+                    'cams': cams,
+                    'Ncams': 5,
+                }
+
+    temporal = 'temporal' in method
+    if temporal:
+        parser_name = 'temporalsegmentationdata'
+    else:
+        parser_name = 'segmentationdata'
+
+    trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
+                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
+                                          parser_name=parser_name)
+    loader = trainloader if viz_train else valloader
+    nusc_maps = get_nusc_maps(map_folder)
+
+    device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
+
+    if method == 'lift_splat':
+        model = compile_model(grid_conf, data_aug_conf, outC=outC)
+    elif method == 'HDMapNet':
+        model = HDMapNet(xbound, ybound, outC=outC)
+    elif method == 'temporal_HDMapNet':
+        model = TemporalHDMapNet(xbound, ybound, outC=outC)
+
+    model.load_state_dict(torch.load(modelf))
+    model.to(device)
+
+    dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
+    dx, bx = dx[:2].numpy(), bx[:2].numpy()
+
+    scene2map = {}
+    for rec in loader.dataset.nusc.scene:
+        log = loader.dataset.nusc.get('log', rec['log_token'])
+        scene2map[rec['name']] = log['location']
+
+    val = 0.01
+    fH, fW = final_dim
+    plt.figure(figsize=(3*fW*val, (2*fW + 2*fH)*val))
+    gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(2*fW, fH, fH))
+    gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
+
+    post_processor = LaneNetPostProcessor(dbscan_eps=0.35, postprocess_min_samples=200)
+
+    model.eval()
+    counter = 0
+    with torch.no_grad():
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask) in enumerate(loader):
+            out, embedded = model(imgs.to(device),
+                    rots.to(device),
+                    trans.to(device),
+                    intrins.to(device),
+                    post_rots.to(device),
+                    post_trans.to(device),
+                    translation.to(device),
+                    yaw_pitch_roll.to(device),
+                    )
+            preds = onehot_encoding(out).cpu().numpy()
+            embedded = embedded.cpu()
+
+            if temporal:
+                imgs = imgs[:, 0]
+            # visualization
+            binimgs[binimgs < 0.1] = np.nan
+            out[out < 0.1] = np.nan
+            for si in range(imgs.shape[0]):
+                plt.clf()
+                for imgi, img in enumerate(imgs[si]):
+                    ax = plt.subplot(gs[1 + imgi // 3, imgi % 3])
+                    showimg = denormalize_img(img)
+                    # flip the bottom images
+                    if imgi > 2:
+                        showimg = showimg.transpose(Image.FLIP_LEFT_RIGHT)
+                    plt.imshow(showimg)
+                    plt.axis('off')
+                    plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.92), xycoords='axes fraction')
+
+                final_mask = np.empty((200, 400, 3), dtype='uint8')
+                final_mask[:] = np.nan
+                for i in range(1, preds.shape[0]):
+                    single_mask = preds[i].astype('uint8')
+                    mask_image, lane_coords = post_processor.postprocess(single_mask, embedded)
+                    final_mask += mask_image
+
+                ax = plt.subplot(gs[0, :])
+                plt.setp(ax.spines.values(), color='b', linewidth=2)
+
+                plt.imshow(final_mask, vmax=0, alpha=0.6)
+
+                plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+
+                # plot static map (improves visualization)
+                rec = loader.dataset.ixes[counter]
+                plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
+                plt.xlim((0, binimgs.shape[3]))
+                plt.ylim((0, binimgs.shape[2]))
+                add_ego(bx, dx)
+
+                imname = f'eval{batchi:06}_{si:03}.jpg'
+                print('saving', imname)
+                plt.savefig(imname)
+                counter += 1
