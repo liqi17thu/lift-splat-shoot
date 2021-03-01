@@ -41,7 +41,7 @@ def train(version,
           dataroot='data/nuScenes',
           nepochs=30,
           gpuid=1,
-          outC=3,
+          outC=4,
           method='temporal_HDMapNet',
           preprocess=False,
 
