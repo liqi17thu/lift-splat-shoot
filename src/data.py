@@ -186,11 +186,11 @@ class NuscData(torch.utils.data.Dataset):
             post_tran[:2] = post_tran2
             post_rot[:2, :2] = post_rot2
 
-            # if self.is_train:
-            #     img = color_jitter(img)
+            if self.is_train:
+                img = color_jitter(img)
             img = normalize_img(img)
-            # if self.is_train:
-            #     img = random_erasing(img)
+            if self.is_train:
+                img = random_erasing(img)
             imgs.append(img)
             intrins.append(intrin)
             rots.append(rot)
@@ -253,18 +253,21 @@ class NuscData(torch.utils.data.Dataset):
         instance_mask = np.sum(line_mask, 0).astype('int32')
 
         contour_mask, contour_inst = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness)
+        contour_thick_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness+3)
+
         contour_mask[contour_mask != 0] += cum_inst[-1]
+        instance_mask[contour_thick_mask != 0] = 0
         instance_mask[contour_mask != 0] = contour_mask[contour_mask != 0]
 
         seg_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
         seg_mask[3] = contour_mask != 0
-        seg_mask[2] = (line_mask[2] != 0) & (seg_mask[3] == 0)
-        seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0) & (seg_mask[3] == 0)
+        seg_mask[2] = (line_mask[2] != 0) & (contour_thick_mask == 0)
+        seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0) & (contour_thick_mask == 0)
         seg_mask[0] = 1 - np.any(seg_mask, axis=0)
 
         # seg_mask = np.zeros((3, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
         # seg_mask[2] = contour_mask != 0
-        # seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0)
+        # seg_mask[1] = np.any(line_mask[:2], axis=0) & (contour_thick_mask == 0)
         # seg_mask[0] = 1 - np.any(seg_mask, axis=0)
 
         return torch.Tensor(seg_mask), torch.Tensor(instance_mask)
@@ -318,7 +321,7 @@ class SegmentationData(NuscData):
 class TemporalSegmentationData(NuscData):
     def __init__(self, *args, **kwargs):
         super(TemporalSegmentationData, self).__init__(*args, **kwargs)
-        self.T = 4
+        self.T = 2
 
     def __getitem__(self, index):
         rec = self.ixes[index]
