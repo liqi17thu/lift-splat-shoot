@@ -19,4 +19,5 @@ if __name__ == '__main__':
         'eval_model': src.explore.eval_model,
         'viz_model_preds': src.explore.viz_model_preds,
         'viz_model_preds_class3': src.explore.viz_model_preds_class3,
+        'viz_model_preds_inst': src.explore.viz_model_preds_inst,
     })

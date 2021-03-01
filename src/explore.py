@@ -7,6 +7,7 @@ import os
 import random
 
 import torch
+import torch.nn as nn
 import numpy as np
 import matplotlib as mpl
 import tqdm
@@ -502,7 +503,7 @@ def viz_model_preds_class3(version,
                     'preprocess': preprocess,
                     'bot_pct_lim': bot_pct_lim,
                     'cams': cams,
-                    'Ncams': 5,
+                    'Ncams': 6,
                 }
 
     temporal = 'temporal' in method
@@ -658,7 +659,7 @@ def viz_model_preds_inst(version,
                     'preprocess': preprocess,
                     'bot_pct_lim': bot_pct_lim,
                     'cams': cams,
-                    'Ncams': 5,
+                    'Ncams': 6,
                 }
 
     temporal = 'temporal' in method
@@ -699,7 +700,8 @@ def viz_model_preds_inst(version,
     gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(2*fW, fH, fH))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
-    post_processor = LaneNetPostProcessor(dbscan_eps=0.35, postprocess_min_samples=200)
+    max_pool = nn.MaxPool2d(5, padding=2, stride=1)
+    post_processor = LaneNetPostProcessor(dbscan_eps=0.6, postprocess_min_samples=10)
 
     model.eval()
     counter = 0
@@ -714,14 +716,17 @@ def viz_model_preds_inst(version,
                     translation.to(device),
                     yaw_pitch_roll.to(device),
                     )
+            out = out.softmax(1).cpu()
             preds = onehot_encoding(out).cpu().numpy()
             embedded = embedded.cpu()
+
 
             if temporal:
                 imgs = imgs[:, 0]
             # visualization
             binimgs[binimgs < 0.1] = np.nan
-            out[out < 0.1] = np.nan
+            # out = out.cpu().numpy()
+            # out[out < 0.1] = np.nan
             for si in range(imgs.shape[0]):
                 plt.clf()
                 for imgi, img in enumerate(imgs[si]):
@@ -734,21 +739,43 @@ def viz_model_preds_inst(version,
                     plt.axis('off')
                     plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.92), xycoords='axes fraction')
 
-                final_mask = np.empty((200, 400, 3), dtype='uint8')
-                final_mask[:] = np.nan
-                for i in range(1, preds.shape[0]):
-                    single_mask = preds[i].astype('uint8')
-                    mask_image, lane_coords = post_processor.postprocess(single_mask, embedded)
-                    final_mask += mask_image
+                final_mask = np.zeros((200, 400, 3), dtype='uint8')
+                final_mask_alpha = np.ones((200, 400))
+
+                for i in range(1, preds.shape[1]):
+                    single_mask = preds[si][i].astype('uint8')
+                    single_embedded = embedded[si].permute(1, 2, 0)
+                    if not (single_mask != 0).any():
+                        continue
+                    mask_image, lane_coords = post_processor.postprocess(single_mask, single_embedded)
+                    if mask_image is None:
+                        continue
+
+                    out[si][i][(mask_image == 0).all(-1)] = 0
+                    max_pooled_out = max_pool(out[si][i].unsqueeze(0))
+                    nms_mask = out[si][i] == max_pooled_out
+                    final_mask[nms_mask[0]] += mask_image[nms_mask[0]]
+
+                # max_pooled_mask = torch.tensor(final_mask).permute(2, 0, 1).unsqueeze(0).float()
+                # max_pooled_mask = max_pool(max_pooled_mask)[0].int().permute(1, 2, 0)
+                # final_mask[final_mask != max_pooled_mask] = 0
+                final_mask_alpha[(final_mask == 0).all(-1)] = 0.
+                final_mask[(final_mask == 0).all(-1)] = 255
 
                 ax = plt.subplot(gs[0, :])
+                ax.patch.set_alpha(0.0)
                 plt.setp(ax.spines.values(), color='b', linewidth=2)
 
-                plt.imshow(final_mask, vmax=0, alpha=0.6)
+                # plt.imshow(out[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                # plt.imshow(out[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                # plt.imshow(out[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+
+                plt.imshow(final_mask, alpha=final_mask_alpha)
 
                 plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]

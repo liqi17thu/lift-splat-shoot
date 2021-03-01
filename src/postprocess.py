@@ -147,7 +147,7 @@ class _LaneNetCluster(object):
         """
 
         self._color_map = []
-        for i in range(20):
+        for i in range(30):
             self._color_map.append([random.randint(0, 256), random.randint(0, 256), random.randint(0, 256)])
 
         # self._color_map = [np.array([255, 0, 0]),
@@ -175,7 +175,7 @@ class _LaneNetCluster(object):
             features = StandardScaler().fit_transform(embedding_image_feats)
             db.fit(features)
         except Exception as err:
-            print(err)
+            # print(err)
             ret = {
                 'origin_features': None,
                 'cluster_nums': 0,
