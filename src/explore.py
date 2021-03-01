@@ -5,6 +5,7 @@ Authors: Jonah Philion and Sanja Fidler
 """
 import os
 import random
+import cv2
 
 import torch
 import torch.nn as nn
@@ -703,6 +704,10 @@ def viz_model_preds_inst(version,
     max_pool = nn.MaxPool2d(5, padding=2, stride=1)
     post_processor = LaneNetPostProcessor(dbscan_eps=0.6, postprocess_min_samples=10)
 
+    color_map = []
+    for i in range(30):
+        color_map.append([random.randint(0, 256), random.randint(0, 256), random.randint(0, 256)])
+
     model.eval()
     counter = 0
     with torch.no_grad():
@@ -739,28 +744,51 @@ def viz_model_preds_inst(version,
                     plt.axis('off')
                     plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.92), xycoords='axes fraction')
 
-                final_mask = np.zeros((200, 400, 3), dtype='uint8')
-                final_mask_alpha = np.ones((200, 400))
+                inst_mask = np.zeros((200, 400), dtype='int32')
+                inst_mask_alpha = np.ones((200, 400))
+                inst_mask_pil = np.zeros((200, 400, 3), dtype='uint8')
 
+                simplified_coords = []
+                simplified_mask = np.zeros((200, 400), dtype='int32')
+                simplified_mask_alpha = np.ones((200, 400))
+                simplified_mask_pil = np.zeros((200, 400, 3), dtype='uint8')
+
+                count = 0
                 for i in range(1, preds.shape[1]):
                     single_mask = preds[si][i].astype('uint8')
                     single_embedded = embedded[si].permute(1, 2, 0)
-                    if not (single_mask != 0).any():
-                        continue
-                    mask_image, lane_coords = post_processor.postprocess(single_mask, single_embedded)
-                    if mask_image is None:
+                    single_class_inst_mask, _ = post_processor.postprocess(single_mask, single_embedded)
+                    if single_class_inst_mask is None:
                         continue
 
-                    out[si][i][(mask_image == 0).all(-1)] = 0
-                    max_pooled_out = max_pool(out[si][i].unsqueeze(0))
-                    nms_mask = out[si][i] == max_pooled_out
-                    final_mask[nms_mask[0]] += mask_image[nms_mask[0]]
+                    prob = out[si][i]
+                    prob[single_class_inst_mask == 0] = 0
+                    max_pooled = max_pool(prob.unsqueeze(0))[0]
+                    nms_mask = (max_pooled == prob).numpy()
 
-                # max_pooled_mask = torch.tensor(final_mask).permute(2, 0, 1).unsqueeze(0).float()
-                # max_pooled_mask = max_pool(max_pooled_mask)[0].int().permute(1, 2, 0)
-                # final_mask[final_mask != max_pooled_mask] = 0
-                final_mask_alpha[(final_mask == 0).all(-1)] = 0.
-                final_mask[(final_mask == 0).all(-1)] = 255
+                    for j in range(1, max(single_class_inst_mask)+1):
+                        idx = np.where(nms_mask & (single_class_inst_mask == j))
+                        lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
+
+                        range_0 = np.max(lane_coordinate[:, 0]) - np.min(lane_coordinate[:, 0])
+                        range_1 = np.max(lane_coordinate[:, 1]) - np.min(lane_coordinate[:, 1])
+                        if range_0 > range_1:
+                            lane_coordinate = np.stack(sorted(lane_coordinate, key=lambda x: x[0]))
+                        else:
+                            lane_coordinate = np.stack(sorted(lane_coordinate, key=lambda x: x[1]))
+                        simplified_coords.append(lane_coordinate)
+                        simplified_mask = cv2.polylines(simplified_mask, [lane_coordinate], False, color=count+j, thickness=1)
+
+                    inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
+                    count += np.max(single_class_inst_mask)
+
+                for i in range(1, max(inst_mask)+1):
+                    inst_mask_pil[inst_mask == i] = color_map[i]
+                inst_mask_alpha[inst_mask == 0] = 0.
+
+                for i in range(1, max(simplified_mask)+1):
+                    simplified_mask_pil[simplified_mask == i] = color_map[i]
+                simplified_mask_alpha[simplified_mask == 0] = 0.
 
                 ax = plt.subplot(gs[0, :])
                 ax.patch.set_alpha(0.0)
@@ -770,7 +798,8 @@ def viz_model_preds_inst(version,
                 # plt.imshow(out[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 # plt.imshow(out[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
-                plt.imshow(final_mask, alpha=final_mask_alpha)
+                plt.imshow(inst_mask_pil, alpha=inst_mask_alpha)
+                plt.imshow(simplified_mask_pil, alpha=simplified_mask_alpha)
 
                 plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)

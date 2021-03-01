@@ -146,9 +146,9 @@ class _LaneNetCluster(object):
 
         """
 
-        self._color_map = []
-        for i in range(30):
-            self._color_map.append([random.randint(0, 256), random.randint(0, 256), random.randint(0, 256)])
+        # self._color_map = []
+        # for i in range(30):
+        #     self._color_map.append([random.randint(0, 256), random.randint(0, 256), random.randint(0, 256)])
 
         # self._color_map = [np.array([255, 0, 0]),
         #                    np.array([0, 255, 0]),
@@ -241,7 +241,7 @@ class _LaneNetCluster(object):
             embedding_image_feats=get_lane_embedding_feats_result['lane_embedding_feats']
         )
 
-        mask = np.zeros(shape=[binary_seg_result.shape[0], binary_seg_result.shape[1], 3], dtype=np.uint8)
+        mask = np.zeros(shape=[binary_seg_result.shape[0], binary_seg_result.shape[1]], dtype=np.int)
         db_labels = dbscan_cluster_result['db_labels']
         unique_labels = dbscan_cluster_result['unique_labels']
         coord = get_lane_embedding_feats_result['lane_coordinates']
@@ -256,7 +256,7 @@ class _LaneNetCluster(object):
                 continue
             idx = np.where(db_labels == label)
             pix_coord_idx = tuple((coord[idx][:, 1], coord[idx][:, 0]))
-            mask[pix_coord_idx] = self._color_map[index]
+            mask[pix_coord_idx] = index + 1
             lane_coords.append(coord[idx])
 
         return mask, lane_coords
