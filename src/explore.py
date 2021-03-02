@@ -614,6 +614,7 @@ def viz_model_preds_class3(version,
 
 from .tools import onehot_encoding
 from .postprocess import LaneNetPostProcessor
+from sklearn.decomposition import PCA
 
 
 def viz_model_preds_inst(version,
@@ -697,12 +698,13 @@ def viz_model_preds_inst(version,
 
     val = 0.01
     fH, fW = final_dim
-    plt.figure(figsize=(3*fW*val, (2*fW + 2*fH)*val))
-    gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(2*fW, fH, fH))
+    plt.figure(figsize=(3*fW*val, (4*fW + 2*fH)*val))
+    gs = mpl.gridspec.GridSpec(4, 3, height_ratios=(2*fW, 2*fW, fH, fH))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
-    max_pool = nn.MaxPool2d(5, padding=2, stride=1)
-    post_processor = LaneNetPostProcessor(dbscan_eps=0.6, postprocess_min_samples=10)
+    max_pool = nn.MaxPool2d(3, padding=1, stride=1)
+    post_processor = LaneNetPostProcessor(dbscan_eps=2.0, postprocess_min_samples=50)
+    # pca = PCA(n_components=3)
 
     color_map = []
     for i in range(30):
@@ -725,17 +727,25 @@ def viz_model_preds_inst(version,
             preds = onehot_encoding(out).cpu().numpy()
             embedded = embedded.cpu()
 
+            # N, C, H, W = embedded.shape
+            # embedded_test = embedded.permute(0, 2, 3, 1).reshape(N*H*W, C)
+            # embedded_fitted = pca.fit_transform(embedded_test)
+            # embedded_fitted = embedded_fitted.reshape((N, H, W, 3))
+            # for i in range(N):
+            #     embedded_fitted[i][inst_mask[i] == 0] = 0
+            #     plt.imshow(embedded_fitted[i])
+            #     plt.savefig(f'pca_{batchi}_{i}.png')
 
             if temporal:
                 imgs = imgs[:, 0]
             # visualization
             binimgs[binimgs < 0.1] = np.nan
-            # out = out.cpu().numpy()
-            # out[out < 0.1] = np.nan
+            seg_mask = out.numpy()
+            seg_mask[seg_mask < 0.1] = np.nan
             for si in range(imgs.shape[0]):
                 plt.clf()
                 for imgi, img in enumerate(imgs[si]):
-                    ax = plt.subplot(gs[1 + imgi // 3, imgi % 3])
+                    ax = plt.subplot(gs[2 + imgi // 3, imgi % 3])
                     showimg = denormalize_img(img)
                     # flip the bottom images
                     if imgi > 2:
@@ -745,29 +755,32 @@ def viz_model_preds_inst(version,
                     plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.92), xycoords='axes fraction')
 
                 inst_mask = np.zeros((200, 400), dtype='int32')
-                inst_mask_alpha = np.ones((200, 400))
-                inst_mask_pil = np.zeros((200, 400, 3), dtype='uint8')
+                inst_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
 
                 simplified_coords = []
                 simplified_mask = np.zeros((200, 400), dtype='int32')
-                simplified_mask_alpha = np.ones((200, 400))
-                simplified_mask_pil = np.zeros((200, 400, 3), dtype='uint8')
+                simplified_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
 
                 count = 0
                 for i in range(1, preds.shape[1]):
                     single_mask = preds[si][i].astype('uint8')
                     single_embedded = embedded[si].permute(1, 2, 0)
-                    single_class_inst_mask, _ = post_processor.postprocess(single_mask, single_embedded)
+                    single_class_inst_mask, single_class_inst_coords = post_processor.postprocess(single_mask, single_embedded)
                     if single_class_inst_mask is None:
                         continue
+
+                    num_inst = len(single_class_inst_coords)
 
                     prob = out[si][i]
                     prob[single_class_inst_mask == 0] = 0
                     max_pooled = max_pool(prob.unsqueeze(0))[0]
-                    nms_mask = (max_pooled == prob).numpy()
+                    nms_mask = ((max_pooled - prob) < 1e-6).numpy()
 
-                    for j in range(1, max(single_class_inst_mask)+1):
+                    for j in range(1, num_inst+1):
                         idx = np.where(nms_mask & (single_class_inst_mask == j))
+                        if len(idx[0]) == 0:
+                            continue
+
                         lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
 
                         range_0 = np.max(lane_coordinate[:, 0]) - np.min(lane_coordinate[:, 0])
@@ -777,34 +790,43 @@ def viz_model_preds_inst(version,
                         else:
                             lane_coordinate = np.stack(sorted(lane_coordinate, key=lambda x: x[1]))
                         simplified_coords.append(lane_coordinate)
-                        simplified_mask = cv2.polylines(simplified_mask, [lane_coordinate], False, color=count+j, thickness=1)
+                        simplified_mask = cv2.polylines(simplified_mask, [lane_coordinate], False, color=count+j, thickness=3)
 
                     inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
-                    count += np.max(single_class_inst_mask)
+                    count += num_inst
 
-                for i in range(1, max(inst_mask)+1):
-                    inst_mask_pil[inst_mask == i] = color_map[i]
-                inst_mask_alpha[inst_mask == 0] = 0.
+                for i in range(1, count+1):
+                    inst_mask_pil[inst_mask == i, :3] = color_map[i]
+                    inst_mask_pil[inst_mask == i, 3] = 150
 
-                for i in range(1, max(simplified_mask)+1):
-                    simplified_mask_pil[simplified_mask == i] = color_map[i]
-                simplified_mask_alpha[simplified_mask == 0] = 0.
+                for i in range(1, count+1):
+                    simplified_mask_pil[simplified_mask == i, :3] = color_map[-i]
+                    simplified_mask_pil[simplified_mask == i, 3] = 255
 
                 ax = plt.subplot(gs[0, :])
-                ax.patch.set_alpha(0.0)
                 plt.setp(ax.spines.values(), color='b', linewidth=2)
 
-                # plt.imshow(out[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-                # plt.imshow(out[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-                # plt.imshow(out[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+                plt.imshow(inst_mask_pil)
+                plt.imshow(simplified_mask_pil)
 
-                plt.imshow(inst_mask_pil, alpha=inst_mask_alpha)
-                plt.imshow(simplified_mask_pil, alpha=simplified_mask_alpha)
+                # plot static map (improves visualization)
+                # rec = loader.dataset.ixes[counter]
+                # plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
+                plt.xlim((0, binimgs.shape[3]))
+                plt.ylim((0, binimgs.shape[2]))
+                add_ego(bx, dx)
+
+
+                ax = plt.subplot(gs[1, :])
+                plt.setp(ax.spines.values(), color='b', linewidth=2)
+
+                plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
                 plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
-
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
@@ -812,6 +834,7 @@ def viz_model_preds_inst(version,
                 plt.xlim((0, binimgs.shape[3]))
                 plt.ylim((0, binimgs.shape[2]))
                 add_ego(bx, dx)
+
 
                 imname = f'eval{batchi:06}_{si:03}.jpg'
                 print('saving', imname)

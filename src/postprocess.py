@@ -170,7 +170,10 @@ class _LaneNetCluster(object):
         :param embedding_image_feats:
         :return:
         """
+        from sklearn.cluster import MeanShift
+
         db = DBSCAN(eps=self.dbscan_eps, min_samples=self.postprocess_min_samples)
+        # db = MeanShift()
         try:
             features = StandardScaler().fit_transform(embedding_image_feats)
             db.fit(features)
@@ -188,14 +191,14 @@ class _LaneNetCluster(object):
         unique_labels = np.unique(db_labels)
 
         num_clusters = len(unique_labels)
-        cluster_centers = db.components_
+        # cluster_centers = db.components_
 
         ret = {
             'origin_features': features,
             'cluster_nums': num_clusters,
             'db_labels': db_labels,
             'unique_labels': unique_labels,
-            'cluster_center': cluster_centers
+            # 'cluster_center': cluster_centers
         }
 
         return ret
