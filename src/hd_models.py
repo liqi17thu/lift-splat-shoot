@@ -158,8 +158,8 @@ class HDMapNet(nn.Module):
         self.d = int(zbound[2] - zbound[1] / zbound[0] + 1)
         self.camC = camC
         self.downsample = 16
-        self.ipm = IPM(xbound, ybound, zbound, N=6, C=camC)
-        # self.ipm = IPM(xbound, ybound, N=6, C=camC, visual=True)
+        self.ipm = IPM(xbound, ybound, zbound)
+        # self.ipm = IPM(xbound, ybound, visual=True)
 
         fv_size = (8, 22)
         bv_size = (20, 40)
@@ -225,8 +225,8 @@ class HDMapNet(nn.Module):
 
 
 class TemporalHDMapNet(HDMapNet):
-    def __init__(self, xbound, ybound, outC, camC=64, instance_seg=True, embedded_dim=16):
-        super(TemporalHDMapNet, self).__init__(xbound, ybound, outC, camC, instance_seg, embedded_dim)
+    def __init__(self, xbound, ybound, zbound, outC, camC=64, instance_seg=True, embedded_dim=16):
+        super(TemporalHDMapNet, self).__init__(xbound, ybound, zbound, outC, camC, instance_seg, embedded_dim)
 
     def get_cam_feats(self, x):
         """Return B x T x N x H/downsample x W/downsample x C

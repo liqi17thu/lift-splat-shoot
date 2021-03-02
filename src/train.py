@@ -59,7 +59,7 @@ def train(version,
 
           xbound=[-30.0, 30.0, 0.15],
           ybound=[-15.0, 15.0, 0.15],
-          zbound=[-10.0, 10.0, 20.0],
+          zbound=[-2.0, 2.0, 0.5],
           dbound=[4.0, 45.0, 1.0],
 
           instance_seg=True,
@@ -113,9 +113,9 @@ def train(version,
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
     elif method == 'HDMapNet':
-        model = HDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+        model = HDMapNet(xbound, ybound, zbound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'temporal_HDMapNet':
-        model = TemporalHDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+        model = TemporalHDMapNet(xbound, ybound, zbound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
 
     if finetune:
         model.load_state_dict(torch.load(modelf))
