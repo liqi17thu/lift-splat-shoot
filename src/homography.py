@@ -62,7 +62,7 @@ def perspective(cam_coords, proj_mat, d, h, w):
 
     pix_coords = pix_coords[:, :2, :] / (pix_coords[:, 2, :][:, None, :] + eps)
     pix_coords = pix_coords.view(N, 2, d, h, w)
-    pix_coords = pix_coords.permute(0, 2, 3, 1)
+    pix_coords = pix_coords.permute(0, 2, 3, 4, 1)
     return pix_coords
 
 

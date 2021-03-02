@@ -216,7 +216,7 @@ class HDMapNet(nn.Module):
         z = self.depth_esti(z)  # B, D, H, W
 
         Ks, RTs, post_RTs = self.get_Ks_RTs_and_post_RTs(intrins, rots, trans, post_rots, post_trans)
-        topdown = self.ipm(x, Ks, RTs, translation, yaw_pitch_roll, post_RTs)  # [B, C, D, H, W]
+        topdown = self.ipm(x, Ks, RTs, post_RTs)  # [B, C, D, H, W]
         B, C, D, H, W = topdown.shape
         z = z.unsqueeze(1).repeat(1, C, 1, 1, 1)
         topdown = (topdown * z).sum(1)
@@ -275,7 +275,7 @@ class TemporalHDMapNet(HDMapNet):
         post_rots = post_rots.view(B*T, N, 3, 3)
         post_trans = post_trans.view(B*T, N, 3)
         Ks, RTs, post_RTs = self.get_Ks_RTs_and_post_RTs(intrins, rots, trans, post_rots, post_trans)
-        topdown = self.ipm(x, Ks, RTs, translation, yaw_pitch_roll, post_RTs)
+        topdown = self.ipm(x, Ks, RTs, post_RTs)
         _, C, H, W = topdown.shape
         topdown = topdown.view(B, T, C, H, W)
         topdown = self.temporal_fusion(topdown, translation, yaw_pitch_roll[..., 0])
