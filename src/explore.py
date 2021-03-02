@@ -703,7 +703,7 @@ def viz_model_preds_inst(version,
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
     max_pool = nn.MaxPool2d(3, padding=1, stride=1)
-    post_processor = LaneNetPostProcessor(dbscan_eps=2.0, postprocess_min_samples=50)
+    post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
     pca = PCA(n_components=3)
 
     color_map = []
@@ -730,6 +730,7 @@ def viz_model_preds_inst(version,
             N, C, H, W = embedded.shape
             embedded_test = embedded.permute(0, 2, 3, 1).reshape(N*H*W, C)
             embedded_fitted = pca.fit_transform(embedded_test)
+            embedded_fitted = torch.sigmoid(torch.tensor(embedded_fitted)).numpy()
             embedded_fitted = embedded_fitted.reshape((N, H, W, 3))
 
             if temporal:
@@ -774,6 +775,7 @@ def viz_model_preds_inst(version,
 
                     for j in range(1, num_inst+1):
                         idx = np.where(nms_mask & (single_class_inst_mask == j))
+                        # idx = np.where((single_class_inst_mask == j))
                         if len(idx[0]) == 0:
                             continue
 
@@ -786,7 +788,7 @@ def viz_model_preds_inst(version,
                         else:
                             lane_coordinate = np.stack(sorted(lane_coordinate, key=lambda x: x[1]))
                         simplified_coords.append(lane_coordinate)
-                        simplified_mask = cv2.polylines(simplified_mask, [lane_coordinate], False, color=count+j, thickness=3)
+                        simplified_mask = cv2.polylines(simplified_mask, [lane_coordinate], False, color=count+j, thickness=1)
 
                     inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
                     count += num_inst
