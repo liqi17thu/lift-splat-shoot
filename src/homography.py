@@ -43,7 +43,7 @@ def rotation_from_euler(rolls, pitchs, yaws):
     return R
 
 
-def perspective(cam_coords, proj_mat, h, w):
+def perspective(cam_coords, proj_mat, d, h, w):
     """
     P = proj_mat @ (x, y, z, 1)
     Project cam2pixel
@@ -53,7 +53,7 @@ def perspective(cam_coords, proj_mat, h, w):
         proj_mat:           [B, 4, 4]
 
     Returns:
-        pix coords:         [B, h, w, 2]
+        pix coords:         [B, d, h, w, 2]
     """
     eps = 1e-7
     pix_coords = proj_mat @ cam_coords
@@ -61,7 +61,7 @@ def perspective(cam_coords, proj_mat, h, w):
     N, _, _ = pix_coords.shape
 
     pix_coords = pix_coords[:, :2, :] / (pix_coords[:, 2, :][:, None, :] + eps)
-    pix_coords = pix_coords.view(N, 2, h, w)
+    pix_coords = pix_coords.view(N, 2, d, h, w)
     pix_coords = pix_coords.permute(0, 2, 3, 1)
     return pix_coords
 
@@ -71,15 +71,15 @@ def bilinear_sampler(imgs, pix_coords):
     Construct a new image by bilinear sampling from the input image.
     Args:
         imgs:                   [B, H, W, C]
-        pix_coords:             [B, h, w, 2]
+        pix_coords:             [B, d, h, w, 2]
     :return:
-        sampled image           [B, h, w, c]
+        sampled image           [B, d, h, w, C]
     """
     B, img_h, img_w, img_c = imgs.shape
-    B, pix_h, pix_w, pix_c = pix_coords.shape
-    out_shape = (B, pix_h, pix_w, img_c)
+    B, pix_d, pix_h, pix_w, pix_c = pix_coords.shape
+    out_shape = (B, pix_d, pix_h, pix_w, img_c)
 
-    pix_x, pix_y = torch.split(pix_coords, 1, dim=-1)  # [B, pix_h, pix_w, 1]
+    pix_x, pix_y = torch.split(pix_coords, 1, dim=-1)  # [B, pix_d, pix_h, pix_w, 1]
 
     # Rounding
     pix_x0 = torch.floor(pix_x)
@@ -132,96 +132,64 @@ def bilinear_sampler(imgs, pix_coords):
     return output
 
 
-def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
-    B = len(zs)
-
+def plane_grid(xbound, ybound, zbound):
     xmin, xmax = xbound[0], xbound[1]
     num_x = int((xbound[1] - xbound[0]) / xbound[2])
     ymin, ymax = ybound[0], ybound[1]
     num_y = int((ybound[1] - ybound[0]) / ybound[2])
+    zmin, zmax = zbound[0], zbound[1]
+    num_z = int((zbound[1] - zbound[0]) / zbound[2]) + 1
 
-    # y = torch.linspace(xmin, xmax, num_x, dtype=torch.double).cuda()
-    # x = torch.linspace(ymin, ymax, num_y, dtype=torch.double).cuda()
-    y = torch.linspace(xmin, xmax, num_x).cuda()
-    x = torch.linspace(ymin, ymax, num_y).cuda()
+    x = torch.linspace(xmin, xmax, num_x).cuda()
+    y = torch.linspace(ymin, ymax, num_y).cuda()
+    z = torch.linspace(zmin, zmax, num_z).cuda()
 
-    y, x = torch.meshgrid(x, y)
+    x = x.view(1, 1, num_x).expand(num_z, num_y, num_x)
+    y = y.view(1, num_y, 1).expand(num_z, num_y, num_x)
+    z = z.view(num_z, 1, 1).expand(num_z, num_y, num_x)
 
     x = x.flatten()
     y = y.flatten()
-
-    x = x.unsqueeze(0).repeat(B, 1)
-    y = y.unsqueeze(0).repeat(B, 1)
-
-    # z = torch.ones_like(x, dtype=torch.double).cuda() * zs.view(-1, 1)
-    # d = torch.ones_like(x, dtype=torch.double).cuda()
-    z = torch.ones_like(x).cuda() * zs.view(-1, 1)
+    z = z.flatten()
     d = torch.ones_like(x).cuda()
-    coords = torch.stack([x, y, z, d], axis=1)
+    coords = torch.stack([x, y, z, d])
 
-    rotation_matrix = rotation_from_euler(rolls, pitchs, yaws).cuda()
-
-    coords = rotation_matrix @ coords
     return coords
 
 
-def ipm_from_parameters(image, xyz, K, RT, target_h, target_w, post_RT=None):
+def ipm_from_parameters(image, xyz, K, RT, target_d, target_h, target_w, post_RT=None):
     """
     :param image: [B, H, W, C]
     :param xyz: [B, 4, npoints]
     :param K: [B, 4, 4]
     :param RT: [B, 4, 4]
+    :param target_d: int
     :param target_h: int
     :param target_w: int
-    :return: warped_images: [B, target_h, target_w, C]
+    :return: warped_images: [B, target_d, target_h, target_w, C]
     """
     P = K @ RT
     if post_RT is not None:
         P = post_RT @ P
     P = P.reshape(-1, 4, 4)
-    pixel_coords = perspective(xyz, P, target_h, target_w)
+    pixel_coords = perspective(xyz, P, target_d, target_h, target_w)
     image2 = bilinear_sampler(image, pixel_coords)
     image2 = image2.type_as(image)
     return image2
 
 
-class PlaneEstimationModule(nn.Module):
-    def __init__(self, N, C):
-        super(PlaneEstimationModule, self).__init__()
-        self.max_pool = nn.AdaptiveMaxPool2d(1)
-        self.linear = nn.Linear(N*C, 3)
-
-        self.linear.weight.data.fill_(0.)
-        self.linear.bias.data.fill_(0.)
-
-    def forward(self, x):
-        B, N, C, H, W = x.shape
-        x = x.view(B*N, C, H, W)
-        x = self.max_pool(x)
-        x = x.view(B, N*C)
-        x = self.linear(x)
-        z, pitch, roll = x[:, 0], x[:, 1], x[:, 2]
-        return z, pitch, roll
-
-
 class IPM(nn.Module):
-    def __init__(self, xbound, ybound, N, C, z_roll_pitch=False, visual=False):
+    def __init__(self, xbound, ybound, zbound, visual=False):
         super(IPM, self).__init__()
         self.visual = visual
-        self.z_roll_pitch = z_roll_pitch
         self.xbound = xbound
         self.ybound = ybound
+        self.zbound = zbound
         self.w = int((xbound[1] - xbound[0]) / xbound[2])
         self.h = int((ybound[1] - ybound[0]) / ybound[2])
+        self.d = int((zbound[1] - zbound[0]) / zbound[2]) + 1
 
-        if z_roll_pitch:
-            self.plane_esti = PlaneEstimationModule(N, C)
-        else:
-            zs = torch.tensor([0.]).cuda()
-            yaws = torch.tensor([0.]).cuda()
-            rolls = torch.tensor([0.]).cuda()
-            pitchs = torch.tensor([0.]).cuda()
-            self.planes = plane_grid(self.xbound, self.ybound, zs, yaws, rolls, pitchs)[0]
+        self.planes = plane_grid(self.xbound, self.ybound, self.zbound)
 
         tri_mask = np.zeros((self.h, self.w))
         vertices = np.array([[0, 0], [0, self.h], [self.w, self.h]], np.int32)
@@ -231,34 +199,23 @@ class IPM(nn.Module):
         self.flipped_tri_mask = torch.flip(self.tri_mask, [2]).cuda()
 
     def mask_warped(self, warped_fv_images):
-        warped_fv_images[:, CAM_F, :, :self.w//2, :] *= 0  # CAM_FRONT
+        warped_fv_images[:, CAM_F, :, :, :self.w//2, :] *= 0  # CAM_FRONT
         warped_fv_images[:, CAM_FL] *= self.flipped_tri_mask  # CAM_FRONT_LEFT
         warped_fv_images[:, CAM_FR] *= 1 - self.tri_mask  # CAM_FRONT_RIGHT
-        warped_fv_images[:, CAM_B, :, self.w//2:, :] *= 0  # CAM_BACK
+        warped_fv_images[:, CAM_B, :, :, self.w//2:, :] *= 0  # CAM_BACK
         warped_fv_images[:, CAM_BL] *= self.tri_mask  # CAM_BACK_LEFT
         warped_fv_images[:, CAM_BR] *= 1 - self.flipped_tri_mask  # CAM_BACK_RIGHT
         return warped_fv_images
 
-    def forward(self, images, Ks, RTs, translation, yaw_roll_pitch, post_RTs=None):
+    def forward(self, images, Ks, RTs, post_RTs=None):
         images = images.permute(0, 1, 3, 4, 2)
         B, N, H, W, C = images.shape
 
-        if self.z_roll_pitch:
-            z, roll, pitch = self.plane_esti(images)
-            zs = translation[:, 2]
-            rolls = yaw_roll_pitch[:, 1]
-            pitchs = yaw_roll_pitch[:, 2]
-            zs += z
-            rolls += roll
-            pitchs += pitch
-            planes = plane_grid(self.xbound, self.ybound, zs, torch.zeros_like(rolls), rolls, pitchs)
-            planes = planes.repeat(N, 1, 1)
-        else:
-            planes = self.planes
+        planes = self.planes
 
         images = images.reshape(B*N, H, W, C)
-        warped_fv_images = ipm_from_parameters(images, planes, Ks, RTs, self.h, self.w, post_RTs)
-        warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
+        warped_fv_images = ipm_from_parameters(images, planes, Ks, RTs, self.d, self.h, self.w, post_RTs)
+        warped_fv_images = warped_fv_images.reshape((B, N, self.d, self.h, self.w, C))
         # warped_fv_images = self.mask_warped(warped_fv_images)
 
         if self.visual:
@@ -270,8 +227,8 @@ class IPM(nn.Module):
             return warped_topdown.permute(0, 3, 1, 2)
         else:
             warped_topdown, _ = warped_fv_images.max(1)
-            warped_topdown = warped_topdown.permute(0, 3, 1, 2)
-            warped_topdown = warped_topdown.view(B, C, self.h, self.w)
+            warped_topdown = warped_topdown.permute(0, 4, 1, 2, 3)
+            warped_topdown = warped_topdown.view(B, C, self.d, self.h, self.w)
             return warped_topdown
 
 

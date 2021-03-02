@@ -30,6 +30,34 @@ class Up(nn.Module):
         return self.conv(x1)
 
 
+class ViewFusionModule(nn.Module):
+    def __init__(self, fv_size, bv_size, n_views=6):
+        super(ViewFusionModule, self).__init__()
+        self.n_views = n_views
+        self.hw_mat = []
+        self.bv_size = bv_size
+        fv_dim = fv_size[0] * fv_size[1]
+        bv_dim = bv_size[0] * bv_size[1]
+        for i in range(self.n_views):
+            fc_transform = nn.Sequential(
+                nn.Linear(fv_dim, bv_dim),
+                nn.ReLU(),
+                nn.Linear(bv_dim, bv_dim),
+                nn.ReLU()
+            )
+            self.hw_mat.append(fc_transform)
+        self.hw_mat = nn.ModuleList(self.hw_mat)
+
+    def forward(self, feat):
+        B, N, C, H, W = feat.shape
+        feat = feat.view(B, N, C, H*W)
+        output = self.hw_mat[0](feat[:, 0])
+        for i in range(1, N):
+            output += self.hw_mat[i](feat[:, i])
+        output = output.view(B, C, self.bv_size[0], self.bv_size[1])
+        return output
+
+
 class CamEncode(nn.Module):
     def __init__(self, C):
         super(CamEncode, self).__init__()
@@ -122,14 +150,26 @@ class BevEncode(nn.Module):
 
 
 class HDMapNet(nn.Module):
-    def __init__(self, xbound, ybound, outC, camC=64, instance_seg=True, embedded_dim=16):
+    def __init__(self, xbound, ybound, zbound, outC, camC=64, instance_seg=True, embedded_dim=16):
         super(HDMapNet, self).__init__()
         self.xbound = xbound
         self.ybound = ybound
+        self.zbound = zbound
+        self.d = int(zbound[2] - zbound[1] / zbound[0] + 1)
         self.camC = camC
         self.downsample = 16
-        self.ipm = IPM(xbound, ybound, N=6, C=camC)
+        self.ipm = IPM(xbound, ybound, zbound, N=6, C=camC)
         # self.ipm = IPM(xbound, ybound, N=6, C=camC, visual=True)
+
+        fv_size = (8, 22)
+        bv_size = (20, 40)
+        self.view_fusion = ViewFusionModule(fv_size, bv_size, n_views=6)
+        self.depth_esti = nn.Sequential(
+            nn.Upsample(scale_factor=10, mode='bilinear', align_corners=True),
+            nn.Conv2d(camC, self.d, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(self.d),
+            nn.Softmax(1),
+        )
 
         self.camencode = CamEncode(camC)
         self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
@@ -172,8 +212,14 @@ class HDMapNet(nn.Module):
     def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
         x = self.get_cam_feats(x)
 
+        z = self.view_fusion(x)
+        z = self.depth_esti(z)  # B, D, H, W
+
         Ks, RTs, post_RTs = self.get_Ks_RTs_and_post_RTs(intrins, rots, trans, post_rots, post_trans)
-        topdown = self.ipm(x, Ks, RTs, translation, yaw_pitch_roll, post_RTs)
+        topdown = self.ipm(x, Ks, RTs, translation, yaw_pitch_roll, post_RTs)  # [B, C, D, H, W]
+        B, C, D, H, W = topdown.shape
+        z = z.unsqueeze(1).repeat(1, C, 1, 1, 1)
+        topdown = (topdown * z).sum(1)
 
         return self.bevencode(topdown)
 
