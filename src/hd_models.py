@@ -97,6 +97,7 @@ class CamEncode(nn.Module):
 class BevEncode(nn.Module):
     def __init__(self, inC, outC, instance_seg=True, embedded_dim=16):
         super(BevEncode, self).__init__()
+        self.instance_seg = instance_seg
 
         trunk = resnet18(pretrained=False, zero_init_residual=True)
         self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
@@ -155,11 +156,11 @@ class HDMapNet(nn.Module):
         self.xbound = xbound
         self.ybound = ybound
         self.zbound = zbound
-        self.d = int(zbound[2] - zbound[1] / zbound[0] + 1)
+        self.d = int((zbound[1] - zbound[0]) / zbound[2]) + 1
         self.camC = camC
         self.downsample = 16
         self.ipm = IPM(xbound, ybound, zbound)
-        # self.ipm = IPM(xbound, ybound, visual=True)
+        # self.ipm = IPM(xbound, ybound, zbound, visual=True)
 
         fv_size = (8, 22)
         bv_size = (20, 40)
@@ -217,9 +218,11 @@ class HDMapNet(nn.Module):
 
         Ks, RTs, post_RTs = self.get_Ks_RTs_and_post_RTs(intrins, rots, trans, post_rots, post_trans)
         topdown = self.ipm(x, Ks, RTs, post_RTs)  # [B, C, D, H, W]
+        # from .tools import denormalize_img
+        # import ipdb; ipdb.set_trace()
         B, C, D, H, W = topdown.shape
         z = z.unsqueeze(1).repeat(1, C, 1, 1, 1)
-        topdown = (topdown * z).sum(1)
+        topdown = (topdown * z).sum(2)
 
         return self.bevencode(topdown)
 

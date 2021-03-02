@@ -59,7 +59,7 @@ def train(version,
 
           xbound=[-30.0, 30.0, 0.15],
           ybound=[-15.0, 15.0, 0.15],
-          zbound=[-2.0, 2.0, 0.5],
+          zbound=[-1.0, 1.0, 0.5],
           dbound=[4.0, 45.0, 1.0],
 
           instance_seg=True,

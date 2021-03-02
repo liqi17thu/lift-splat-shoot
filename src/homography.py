@@ -224,7 +224,7 @@ class IPM(nn.Module):
             warped_topdown[warped_mask] = warped_fv_images[:, CAM_FL][warped_mask] + warped_fv_images[:, CAM_FR][warped_mask]
             warped_mask = warped_topdown == 0
             warped_topdown[warped_mask] = warped_fv_images[:, CAM_BL][warped_mask] + warped_fv_images[:, CAM_BR][warped_mask]
-            return warped_topdown.permute(0, 3, 1, 2)
+            return warped_topdown.permute(0, 4, 1, 2, 3)
         else:
             warped_topdown, _ = warped_fv_images.max(1)
             warped_topdown = warped_topdown.permute(0, 4, 1, 2, 3)
