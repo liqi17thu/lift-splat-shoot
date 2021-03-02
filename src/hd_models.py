@@ -67,7 +67,7 @@ class CamEncode(nn.Module):
 
 
 class BevEncode(nn.Module):
-    def __init__(self, inC, outC, embedded_dim=16):
+    def __init__(self, inC, outC, instance_seg=True, embedded_dim=16):
         super(BevEncode, self).__init__()
 
         trunk = resnet18(pretrained=False, zero_init_residual=True)
@@ -90,15 +90,16 @@ class BevEncode(nn.Module):
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
         )
 
-        self.up1_embedded = Up(64 + 256, 256, scale_factor=4)
-        self.up2_embedded = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',
-                        align_corners=True),
-            nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, embedded_dim, kernel_size=1, padding=0),
-        )
+        if instance_seg:
+            self.up1_embedded = Up(64 + 256, 256, scale_factor=4)
+            self.up2_embedded = nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear',
+                            align_corners=True),
+                nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(128, embedded_dim, kernel_size=1, padding=0),
+            )
 
     def forward(self, x):
         x = self.conv1(x)
@@ -112,14 +113,16 @@ class BevEncode(nn.Module):
         x = self.up1(x2, x1)
         x = self.up2(x)
 
-        x_embedded = self.up1_embedded(x2, x1)
-        x_embedded = self.up2_embedded(x_embedded)
-
-        return x, x_embedded
+        if self.instance_seg:
+            x_embedded = self.up1_embedded(x2, x1)
+            x_embedded = self.up2_embedded(x_embedded)
+            return x, x_embedded
+        else:
+            return x
 
 
 class HDMapNet(nn.Module):
-    def __init__(self, xbound, ybound, outC, camC=64, embedded_dim=16):
+    def __init__(self, xbound, ybound, outC, camC=64, instance_seg=True, embedded_dim=16):
         super(HDMapNet, self).__init__()
         self.xbound = xbound
         self.ybound = ybound
@@ -129,7 +132,7 @@ class HDMapNet(nn.Module):
         # self.ipm = IPM(xbound, ybound, N=6, C=camC, visual=True)
 
         self.camencode = CamEncode(camC)
-        self.bevencode = BevEncode(inC=camC, outC=outC, embedded_dim=embedded_dim)
+        self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
 
     def get_cam_feats(self, x):
         """Return B x N x D x H/downsample x W/downsample x C
@@ -176,8 +179,8 @@ class HDMapNet(nn.Module):
 
 
 class TemporalHDMapNet(HDMapNet):
-    def __init__(self, xbound, ybound, outC, camC=64, embedded_dim=16):
-        super(TemporalHDMapNet, self).__init__(xbound, ybound, outC, camC, embedded_dim)
+    def __init__(self, xbound, ybound, outC, camC=64, instance_seg=True, embedded_dim=16):
+        super(TemporalHDMapNet, self).__init__(xbound, ybound, outC, camC, instance_seg, embedded_dim)
 
     def get_cam_feats(self, x):
         """Return B x T x N x H/downsample x W/downsample x C

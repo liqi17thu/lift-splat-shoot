@@ -62,7 +62,10 @@ def train(version,
           zbound=[-10.0, 10.0, 20.0],
           dbound=[4.0, 45.0, 1.0],
 
+          instance_seg=True,
           embedded_dim=16,
+          finetune=False,
+          modelf='',
 
           delta_v=0.5,
           delta_d=3.0,
@@ -110,10 +113,12 @@ def train(version,
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
     elif method == 'HDMapNet':
-        model = HDMapNet(xbound, ybound, outC=outC, embedded_dim=embedded_dim)
+        model = HDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'temporal_HDMapNet':
-        model = TemporalHDMapNet(xbound, ybound, outC=outC, embedded_dim=embedded_dim)
+        model = TemporalHDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
 
+    if finetune:
+        model.load_state_dict(torch.load(modelf))
     model.to(device)
 
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)

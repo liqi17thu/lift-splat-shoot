@@ -256,7 +256,7 @@ class _LaneNetCluster(object):
                 continue
             idx = np.where(db_labels == label)
             pix_coord_idx = tuple((coord[idx][:, 1], coord[idx][:, 0]))
-            mask[pix_coord_idx] = index + 1
+            mask[pix_coord_idx] = label + 1
             lane_coords.append(coord[idx])
 
         return mask, lane_coords
