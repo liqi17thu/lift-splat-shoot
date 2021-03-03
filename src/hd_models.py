@@ -69,6 +69,7 @@ class CamEncode(nn.Module):
 class BevEncode(nn.Module):
     def __init__(self, inC, outC, instance_seg=True, embedded_dim=16):
         super(BevEncode, self).__init__()
+        self.instance_seg = instance_seg
 
         trunk = resnet18(pretrained=False, zero_init_residual=True)
         self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,

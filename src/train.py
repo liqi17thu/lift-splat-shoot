@@ -66,7 +66,7 @@ def train(version,
           instance_seg=True,
           embedded_dim=16,
           finetune=False,
-          modelf='',
+          modelf='output/refine_data_HDMapNet/model130000.pt',
 
           delta_v=0.5,
           delta_d=3.0,
@@ -126,7 +126,12 @@ def train(version,
         model = TemporalHDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
 
     if finetune:
-        model.load_state_dict(torch.load(modelf))
+        model.load_state_dict(torch.load(modelf), strict=False)
+        for name, param in model.named_parameters():
+            if 'bevencode.up' in name or 'bevencode.layer3' in name:
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
     model.to(device)
     if distributed:
         model = NativeDDP(model, device_ids=[local_rank], find_unused_parameters=True)

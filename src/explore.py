@@ -698,13 +698,13 @@ def viz_model_preds_inst(version,
 
     val = 0.01
     fH, fW = final_dim
-    plt.figure(figsize=(3*fW*val, (4*fW + 2*fH)*val))
-    gs = mpl.gridspec.GridSpec(4, 3, height_ratios=(2*fW, 2*fW, fH, fH))
+    plt.figure(figsize=(3*fW*val, (4.5*fW + 2*fH)*val))
+    gs = mpl.gridspec.GridSpec(5, 3, height_ratios=(1.5*fW, 1.5*fW, 1.5*fW, fH, fH))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
     max_pool = nn.MaxPool2d(3, padding=1, stride=1)
-    post_processor = LaneNetPostProcessor(dbscan_eps=2.0, postprocess_min_samples=50)
-    # pca = PCA(n_components=3)
+    post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
+    pca = PCA(n_components=3)
 
     color_map = []
     for i in range(30):
@@ -713,7 +713,7 @@ def viz_model_preds_inst(version,
     model.eval()
     counter = 0
     with torch.no_grad():
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask) in enumerate(loader):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(loader):
             out, embedded = model(imgs.to(device),
                     rots.to(device),
                     trans.to(device),
@@ -727,14 +727,11 @@ def viz_model_preds_inst(version,
             preds = onehot_encoding(out).cpu().numpy()
             embedded = embedded.cpu()
 
-            # N, C, H, W = embedded.shape
-            # embedded_test = embedded.permute(0, 2, 3, 1).reshape(N*H*W, C)
-            # embedded_fitted = pca.fit_transform(embedded_test)
-            # embedded_fitted = embedded_fitted.reshape((N, H, W, 3))
-            # for i in range(N):
-            #     embedded_fitted[i][inst_mask[i] == 0] = 0
-            #     plt.imshow(embedded_fitted[i])
-            #     plt.savefig(f'pca_{batchi}_{i}.png')
+            N, C, H, W = embedded.shape
+            embedded_test = embedded.permute(0, 2, 3, 1).reshape(N*H*W, C)
+            embedded_fitted = pca.fit_transform(embedded_test)
+            embedded_fitted = torch.sigmoid(torch.tensor(embedded_fitted)).numpy()
+            embedded_fitted = embedded_fitted.reshape((N, H, W, 3))
 
             if temporal:
                 imgs = imgs[:, 0]
@@ -745,7 +742,7 @@ def viz_model_preds_inst(version,
             for si in range(imgs.shape[0]):
                 plt.clf()
                 for imgi, img in enumerate(imgs[si]):
-                    ax = plt.subplot(gs[2 + imgi // 3, imgi % 3])
+                    ax = plt.subplot(gs[3 + imgi // 3, imgi % 3])
                     showimg = denormalize_img(img)
                     # flip the bottom images
                     if imgi > 2:
@@ -778,6 +775,7 @@ def viz_model_preds_inst(version,
 
                     for j in range(1, num_inst+1):
                         idx = np.where(nms_mask & (single_class_inst_mask == j))
+                        # idx = np.where((single_class_inst_mask == j))
                         if len(idx[0]) == 0:
                             continue
 
@@ -790,7 +788,7 @@ def viz_model_preds_inst(version,
                         else:
                             lane_coordinate = np.stack(sorted(lane_coordinate, key=lambda x: x[1]))
                         simplified_coords.append(lane_coordinate)
-                        simplified_mask = cv2.polylines(simplified_mask, [lane_coordinate], False, color=count+j, thickness=3)
+                        simplified_mask = cv2.polylines(simplified_mask, [lane_coordinate], False, color=count+j, thickness=1)
 
                     inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
                     count += num_inst
@@ -804,22 +802,28 @@ def viz_model_preds_inst(version,
                     simplified_mask_pil[simplified_mask == i, 3] = 255
 
                 ax = plt.subplot(gs[0, :])
-                plt.setp(ax.spines.values(), color='b', linewidth=2)
+                ax.get_xaxis().set_ticks([])
+                ax.get_yaxis().set_ticks([])
+                embedded_fitted[si][inst_label[si] == 0] = 0
+                plt.imshow(embedded_fitted[si])
+                plt.xlim((0, binimgs.shape[3]))
+                plt.ylim((0, binimgs.shape[2]))
+                add_ego(bx, dx)
 
+                ax = plt.subplot(gs[1, :])
+                ax.get_xaxis().set_ticks([])
+                ax.get_yaxis().set_ticks([])
                 plt.imshow(inst_mask_pil)
                 plt.imshow(simplified_mask_pil)
-
-                # plot static map (improves visualization)
-                # rec = loader.dataset.ixes[counter]
-                # plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
                 plt.xlim((0, binimgs.shape[3]))
                 plt.ylim((0, binimgs.shape[2]))
                 add_ego(bx, dx)
 
 
-                ax = plt.subplot(gs[1, :])
+                ax = plt.subplot(gs[2, :])
+                ax.get_xaxis().set_ticks([])
+                ax.get_yaxis().set_ticks([])
                 plt.setp(ax.spines.values(), color='b', linewidth=2)
-
                 plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
