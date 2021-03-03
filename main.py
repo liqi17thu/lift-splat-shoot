@@ -6,18 +6,19 @@ Authors: Jonah Philion and Sanja Fidler
 
 from fire import Fire
 
-import src
+# import src
+from src import explore, train
 
 
 if __name__ == '__main__':
     Fire({
-        'lidar_check': src.explore.lidar_check,
-        'cumsum_check': src.explore.cumsum_check,
+        'lidar_check': explore.lidar_check,
+        'cumsum_check': explore.cumsum_check,
 
-        'gen_data': src.explore.gen_data,
-        'train': src.train.train,
-        'eval_model': src.explore.eval_model,
-        'viz_model_preds': src.explore.viz_model_preds,
-        'viz_model_preds_class3': src.explore.viz_model_preds_class3,
-        'viz_model_preds_inst': src.explore.viz_model_preds_inst,
+        'gen_data': explore.gen_data,
+        'train': train.train,
+        'eval_model': explore.eval_model,
+        'viz_model_preds': explore.viz_model_preds,
+        'viz_model_preds_class3': explore.viz_model_preds_class3,
+        'viz_model_preds_inst': explore.viz_model_preds_inst,
     })

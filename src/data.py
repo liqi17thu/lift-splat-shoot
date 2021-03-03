@@ -49,7 +49,7 @@ class NuscData(torch.utils.data.Dataset):
 
         self.fix_nuscenes_formatting()
 
-        print(self)
+        # print(self)
 
     def fix_nuscenes_formatting(self):
         """If nuscenes is stored with trainval/1 trainval/2 ... structure, adjust the file paths
@@ -320,7 +320,7 @@ class SegmentationData(NuscData):
 class TemporalSegmentationData(NuscData):
     def __init__(self, *args, **kwargs):
         super(TemporalSegmentationData, self).__init__(*args, **kwargs)
-        self.T = 2
+        self.T = 4
 
     def __getitem__(self, index):
         rec = self.ixes[index]
