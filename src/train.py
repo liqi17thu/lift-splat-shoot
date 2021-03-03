@@ -11,6 +11,7 @@ import os
 
 import torch
 from torch.optim.lr_scheduler import StepLR
+from torch.nn.parallel import DistributedDataParallel as NativeDDP
 
 from .models import compile_model
 from .data import compile_data
@@ -78,6 +79,8 @@ def train(version,
           nworkers=10,
           lr=1e-3,
           weight_decay=1e-7,
+          distributed=False,
+          local_rank=0,
           ):
     grid_conf = {
         'xbound': xbound,
@@ -104,9 +107,14 @@ def train(version,
     else:
         parser_name = 'segmentationdata'
 
-    trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
-                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name=parser_name)
+    if distributed:
+        torch.cuda.set_device(local_rank)
+        torch.distributed.init_process_group(backend='nccl', init_method='env://')
+        world_size = torch.distributed.get_world_size()
+
+    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
+                                                              grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
+                                                              parser_name=parser_name, distributed=distributed)
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
@@ -120,6 +128,8 @@ def train(version,
     if finetune:
         model.load_state_dict(torch.load(modelf))
     model.to(device)
+    if distributed:
+        model = NativeDDP(model, device_ids=[local_rank], find_unused_parameters=True)
 
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     sched = StepLR(opt, 10, 0.1)
@@ -134,6 +144,10 @@ def train(version,
     model.train()
     counter = 0
     for epoch in range(nepochs):
+        if distributed:
+            train_sampler.set_epoch(epoch)
+            val_sampler.set_epoch(epoch)
+
         np.random.seed()
         for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask) in enumerate(trainloader):
             t0 = time()
