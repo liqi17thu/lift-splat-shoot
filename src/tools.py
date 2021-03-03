@@ -470,7 +470,7 @@ def get_accuracy_precision_recall_multi_class(preds, binimgs):
     return tots, cors, tps, fps, fns, cors / tots, tps / (tps + fps + 1e-7), tps / (tps + fns + 1e-7)
 
 
-def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_var, scale_dist, device, use_tqdm=False):
+def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_var, scale_dist, use_tqdm=False):
     model.eval()
     total_seg_loss = 0.0
     total_reg_loss = 0.0
@@ -489,11 +489,11 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_v
     with torch.no_grad():
         for batch in loader:
             allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask = batch
-            preds, embedded = model(allimgs.to(device), rots.to(device),
-                          trans.to(device), intrins.to(device), post_rots.to(device),
-                          post_trans.to(device), translation.to(device), yaw_pitch_roll.to(device))
-            binimgs = binimgs.to(device)
-            inst_mask = inst_mask.to(device)
+            preds, embedded = model(allimgs.cuda(), rots.cuda(),
+                          trans.cuda(), intrins.cuda(), post_rots.cuda(),
+                          post_trans.cuda(), translation.cuda(), yaw_pitch_roll.cuda())
+            binimgs = binimgs.cuda()
+            inst_mask = inst_mask.cuda()
 
             # loss
             bs = preds.shape[0]

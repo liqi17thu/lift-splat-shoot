@@ -151,7 +151,7 @@ class HDMapNet(nn.Module):
         Ks[:, :, :3, :3] = intrins
 
         Rs = torch.eye(4, device=rots.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
-        Rs[:, :, :3, :3] = rots.transpose(-1, -2)
+        Rs[:, :, :3, :3] = rots.transpose(-1, -2).contiguous()
         Ts = torch.eye(4, device=trans.device).view(1, 1, 4, 4).repeat(B, N, 1, 1)
         Ts[:, :, :3, 3] = -trans
         RTs = Rs @ Ts
@@ -208,15 +208,15 @@ class TemporalHDMapNet(HDMapNet):
         grid = grid + trans1
         grid = grid - trans0
         grid = rot0 @ grid
-        grid = grid.view(B*(T-1), 2, H, W).permute(0, 2, 3, 1)
+        grid = grid.view(B*(T-1), 2, H, W).permute(0, 2, 3, 1).contiguous()
         grid = cam_to_pixel(grid, self.xbound, self.ybound)
-        topdown = topdown.permute(0, 1, 3, 4, 2)
+        topdown = topdown.permute(0, 1, 3, 4, 2).contiguous()
         prev_topdown = topdown[:, 1:]
         warped_prev_topdown = bilinear_sampler(prev_topdown.reshape(B*(T-1), H, W, C), grid).view(B, T-1, H, W, C)
         topdown = torch.cat([topdown[:, 0].unsqueeze(1), warped_prev_topdown], axis=1)
         topdown = topdown.view(B, T, H, W, C)
         topdown = topdown.max(1)[0]
-        topdown = topdown.permute(0, 3, 1, 2)
+        topdown = topdown.permute(0, 3, 1, 2).contiguous()
         return topdown
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):

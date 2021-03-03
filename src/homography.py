@@ -62,7 +62,7 @@ def perspective(cam_coords, proj_mat, h, w):
 
     pix_coords = pix_coords[:, :2, :] / (pix_coords[:, 2, :][:, None, :] + eps)
     pix_coords = pix_coords.view(N, 2, h, w)
-    pix_coords = pix_coords.permute(0, 2, 3, 1)
+    pix_coords = pix_coords.permute(0, 2, 3, 1).contiguous()
     return pix_coords
 
 
@@ -240,7 +240,7 @@ class IPM(nn.Module):
         return warped_fv_images
 
     def forward(self, images, Ks, RTs, translation, yaw_roll_pitch, post_RTs=None):
-        images = images.permute(0, 1, 3, 4, 2)
+        images = images.permute(0, 1, 3, 4, 2).contiguous()
         B, N, H, W, C = images.shape
 
         if self.z_roll_pitch:
@@ -267,10 +267,10 @@ class IPM(nn.Module):
             warped_topdown[warped_mask] = warped_fv_images[:, CAM_FL][warped_mask] + warped_fv_images[:, CAM_FR][warped_mask]
             warped_mask = warped_topdown == 0
             warped_topdown[warped_mask] = warped_fv_images[:, CAM_BL][warped_mask] + warped_fv_images[:, CAM_BR][warped_mask]
-            return warped_topdown.permute(0, 3, 1, 2)
+            return warped_topdown.permute(0, 3, 1, 2).contiguous()
         else:
             warped_topdown, _ = warped_fv_images.max(1)
-            warped_topdown = warped_topdown.permute(0, 3, 1, 2)
+            warped_topdown = warped_topdown.permute(0, 3, 1, 2).contiguous()
             warped_topdown = warped_topdown.view(B, C, self.h, self.w)
             return warped_topdown
 
