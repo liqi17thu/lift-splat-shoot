@@ -636,7 +636,7 @@ def viz_model_preds_inst(version,
 
                             xbound=[-30.0, 30.0, 0.15],
                             ybound=[-15.0, 15.0, 0.15],
-                            zbound=[-10.0, 10.0, 20.0],
+                            zbound=[-1.0, 1.0, 0.5],
                             dbound=[4.0, 45.0, 1.0],
 
                             bsz=4,
@@ -680,11 +680,11 @@ def viz_model_preds_inst(version,
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
     elif method == 'HDMapNet':
-        model = HDMapNet(xbound, ybound, outC=outC)
+        model = HDMapNet(xbound, ybound, zbound, outC=outC)
     elif method == 'temporal_HDMapNet':
-        model = TemporalHDMapNet(xbound, ybound, outC=outC)
+        model = TemporalHDMapNet(xbound, ybound, zbound, outC=outC)
 
-    model.load_state_dict(torch.load(modelf))
+    # model.load_state_dict(torch.load(modelf))
     model.to(device)
 
     dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])

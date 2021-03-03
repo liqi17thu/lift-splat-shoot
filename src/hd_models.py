@@ -169,8 +169,9 @@ class HDMapNet(nn.Module):
             nn.Upsample(scale_factor=10, mode='bilinear', align_corners=True),
             nn.Conv2d(camC, self.d, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(self.d),
-            nn.Softmax(1),
+            nn.Sigmoid(),
         )
+        self.prior = torch.tensor([0, 0.0, 0.4, 0.0, 0]).cuda().reshape(1, 5, 1, 1)
 
         self.camencode = CamEncode(camC)
         self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
@@ -215,10 +216,11 @@ class HDMapNet(nn.Module):
 
         z = self.view_fusion(x)
         z = self.depth_esti(z)  # B, D, H, W
+        z = 10 * (z + self.prior)
+        z = z.softmax(1)
 
         Ks, RTs, post_RTs = self.get_Ks_RTs_and_post_RTs(intrins, rots, trans, post_rots, post_trans)
         topdown = self.ipm(x, Ks, RTs, post_RTs)  # [B, C, D, H, W]
-        # from .tools import denormalize_img
         # import ipdb; ipdb.set_trace()
         B, C, D, H, W = topdown.shape
         z = z.unsqueeze(1).repeat(1, C, 1, 1, 1)
