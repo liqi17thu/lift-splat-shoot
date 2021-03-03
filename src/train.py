@@ -41,17 +41,13 @@ def write_log(writer, ious, acces, precs, recalls, title, counter):
 def train(version,
           dataroot='data/nuScenes',
           nepochs=30,
-          gpuid=1,
+          gpuid=0,
           outC=4,
           method='temporal_HDMapNet',
           preprocess=False,
 
           H=900, W=1600,
-          resize_lim=(0.193, 0.225),
           final_dim=(128, 352),
-          bot_pct_lim=(0.0, 0.22),
-          rot_lim=(-5.4, 5.4),
-          rand_flip=False,
           ncams=6,
           line_width=5,
           max_grad_norm=5.0,
@@ -89,12 +85,8 @@ def train(version,
         'dbound': dbound,
     }
     data_aug_conf = {
-                    'resize_lim': resize_lim,
                     'final_dim': final_dim,
-                    'rot_lim': rot_lim,
                     'H': H, 'W': W,
-                    'rand_flip': rand_flip,
-                    'bot_pct_lim': bot_pct_lim,
                     'preprocess': preprocess,
                     'line_width': line_width,
                     'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
@@ -209,3 +201,99 @@ def train(version,
                 model.train()
 
         sched.step(epoch)
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+import argparse
+parser = argparse.ArgumentParser(description='Train HDMapNet', add_help=False)
+parser.add_argument('--version', default='mini', help='data version')
+parser.add_argument('--dataroot', default='data/nuScenes', help='data root')
+parser.add_argument('--nepochs', default=30)
+parser.add_argument('--gpuid', default=1)
+parser.add_argument('--outC', default=4, help='classes of segmentation')
+parser.add_argument('--method', default='temporal_HDMapNet', choices=['lift-splat', 'HDMapNet', 'temporal_HDMapNet'])
+parser.add_argument('--preprocess', default=False, type=str2bool)
+parser.add_argument('--H', default=900, type=int)
+parser.add_argument('--W', default=1600, type=int)
+parser.add_argument('--final_h', default=128, type=int)
+parser.add_argument('--final_w', default=352, type=int)
+parser.add_argument('--ncams', default=6, type=int)
+parser.add_argument('--max_grad_norm', default=5.0, type=float)
+parser.add_argument('--logdir', default='./runs', type=str)
+parser.add_argument('--xbound', default=[-30.0, 30.0, 0.15], type=float, nargs=3)
+parser.add_argument('--ybound', default=[-15.0, 15.0, 0.15], type=float, nargs=3)
+parser.add_argument('--zbound', default=[-10.0, 10.0, 20.0], type=float, nargs=3)
+parser.add_argument('--dbound', default=[-4.0, 45.0, 1.0], type=float, nargs=3)
+parser.add_argument('--instance_seg', default=True, type=str2bool)
+parser.add_argument('--embedded_dim', default=16)
+parser.add_argument('--finetune', default=False, type=str2bool)
+parser.add_argument('--modelf', default='output/refine_data_HDMapNet/model130000.pt', type=str)
+
+parser.add_argument('--delta_v', default=0.5, type=float)
+parser.add_argument('--delta_d', default=3.0, type=float)
+
+parser.add_argument('--scale_seg', default=1.0, type=float)
+parser.add_argument('--scale_var', default=1.0, type=float)
+parser.add_argument('--scale_dist', default=1.0, type=float)
+parser.add_argument('--bsz', default=4, type=int)
+parser.add_argument('--nworkers', default=10, type=int)
+parser.add_argument('--lr', default=1e-3, type=float)
+parser.add_argument('--weight_decay', default=1e-7, type=float)
+
+parser.add_argument('--distributed', default=False, type=str2bool)
+
+
+parser.add_argument('--local_rank', default=0)
+
+
+if __name__ == '__main__':
+    args = parser.parse_args()
+    train(version=args.version,
+          dataroot=args.dataroot,
+          nepochs=args.dataroot,
+          gpuid=args.gpuid,
+          outC=args.outC,
+          method=args.method,
+          preprocess=args.preprocess,
+          H=args.H,
+          W=args.W,
+          final_dim=args.final_dim,
+          ncams=args.ncams,
+          line_width=args.line_width,
+          max_grad_norm=args.max_grad_norm,
+          pos_weight=args.pos_weight,
+          logdir=args.logdir,
+
+          xbound=args.xbound,
+          ybound=args.ybound,
+          zbound=args.zbound,
+          dbound=args.dbound,
+
+          instance_seg=args.instance_seg,
+          embedded_dim=args.embedded_dim,
+          finetune=args.finetune,
+          modelf=args.modelf,
+
+          delta_v=args.delta_v,
+          delta_d=args.delta_d,
+
+          scale_seg=args.scale_seg,
+          scale_var=args.scale_var,
+          scale_dist=args.scale_dist,
+
+          bsz=args.bsz,
+          nworkers=args.nworkers,
+          lr=args.lr,
+          weight_decay=args.weight_decay,
+          distributed=args.distributed,
+          local_rank=args.local_rank
+          )
