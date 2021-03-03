@@ -18,8 +18,8 @@ from .data import compile_data
 from .tools import get_batch_iou_multi_class, get_val_info
 from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss, SimpleLoss, DiscriminativeLoss
-from .hd_models import HDMapNet
-from .hd_models import TemporalHDMapNet
+from .hd_models import HDMapNet, TemporalHDMapNet
+from .vpn_model import VPNet
 
 
 import argparse
@@ -49,17 +49,13 @@ def write_log(writer, ious, acces, precs, recalls, title, counter):
 def train(version='mini',
           dataroot='data/nuScenes',
           nepochs=30,
-          gpuid=1,
+          gpuid=0,
           outC=4,
           method='temporal_HDMapNet',
           preprocess=False,
 
           H=900, W=1600,
-          resize_lim=(0.193, 0.225),
           final_dim=(128, 352),
-          bot_pct_lim=(0.0, 0.22),
-          rot_lim=(-5.4, 5.4),
-          rand_flip=False,
           ncams=6,
           line_width=5,
           max_grad_norm=5.0,
@@ -98,12 +94,8 @@ def train(version='mini',
         'dbound': dbound,
     }
     data_aug_conf = {
-                    'resize_lim': resize_lim,
                     'final_dim': final_dim,
-                    'rot_lim': rot_lim,
                     'H': H, 'W': W,
-                    'rand_flip': rand_flip,
-                    'bot_pct_lim': bot_pct_lim,
                     'preprocess': preprocess,
                     'line_width': line_width,
                     'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
@@ -130,6 +122,8 @@ def train(version='mini',
         model = HDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+    elif method == 'VPN':
+        model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
 
     if finetune:
         model.load_state_dict(torch.load(modelf), strict=False)
@@ -139,6 +133,7 @@ def train(version='mini',
             else:
                 param.requires_grad = False
     model.cuda()
+
     if distributed:
         model = NativeDDP(model, device_ids=[local_rank], find_unused_parameters=True)
 
@@ -223,6 +218,7 @@ def train(version='mini',
 
 if __name__ == '__main__':
     args = parser.parse_args()
+
     train(local_rank=args.local_rank,
           logdir=args.logdir,
           bsz=args.bsz)
