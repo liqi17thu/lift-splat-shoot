@@ -83,7 +83,7 @@ def train(version='mini',
           finetune=False,
           modelf='output/refine_data_HDMapNet/model130000.pt',
 
-          bsz=2,
+          bsz=4,
           nworkers=10,
           lr=1e-3,
           weight_decay=1e-7,
