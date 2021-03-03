@@ -18,8 +18,8 @@ from .data import compile_data
 from .tools import get_batch_iou_multi_class, get_val_info
 from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss, SimpleLoss, DiscriminativeLoss
-from .hd_models import HDMapNet
-from .hd_models import TemporalHDMapNet
+from .hd_models import HDMapNet, TemporalHDMapNet
+from .vpn_model import VPNet
 
 
 import argparse
@@ -122,6 +122,8 @@ def train(version='mini',
         model = HDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+    elif method == 'VPN':
+        model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
 
     if finetune:
         model.load_state_dict(torch.load(modelf), strict=False)
@@ -131,6 +133,7 @@ def train(version='mini',
             else:
                 param.requires_grad = False
     model.cuda()
+
     if distributed:
         model = NativeDDP(model, device_ids=[local_rank], find_unused_parameters=True)
 

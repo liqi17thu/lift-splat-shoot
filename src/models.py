@@ -87,8 +87,9 @@ class CamEncode(nn.Module):
 
 
 class BevEncode(nn.Module):
-    def __init__(self, inC, outC):
+    def __init__(self, inC, outC, instance_seg=True, embedded_dim=16):
         super(BevEncode, self).__init__()
+        self.instance_seg = instance_seg
 
         trunk = resnet18(pretrained=False, zero_init_residual=True)
         self.conv1 = nn.Conv2d(inC, 64, kernel_size=7, stride=2, padding=3,
@@ -100,15 +101,26 @@ class BevEncode(nn.Module):
         self.layer2 = trunk.layer2
         self.layer3 = trunk.layer3
 
-        self.up1 = Up(64+256, 256, scale_factor=4)
+        self.up1 = Up(64 + 256, 256, scale_factor=4)
         self.up2 = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear',
-                              align_corners=True),
+                        align_corners=True),
             nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             nn.Conv2d(128, outC, kernel_size=1, padding=0),
         )
+
+        if instance_seg:
+            self.up1_embedded = Up(64 + 256, 256, scale_factor=4)
+            self.up2_embedded = nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear',
+                            align_corners=True),
+                nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(128, embedded_dim, kernel_size=1, padding=0),
+            )
 
     def forward(self, x):
         x = self.conv1(x)
@@ -117,16 +129,21 @@ class BevEncode(nn.Module):
 
         x1 = self.layer1(x)
         x = self.layer2(x1)
-        x = self.layer3(x)
+        x2 = self.layer3(x)
 
-        x = self.up1(x, x1)
+        x = self.up1(x2, x1)
         x = self.up2(x)
 
-        return x
+        if self.instance_seg:
+            x_embedded = self.up1_embedded(x2, x1)
+            x_embedded = self.up2_embedded(x_embedded)
+            return x, x_embedded
+        else:
+            return x
 
 
 class LiftSplatShoot(nn.Module):
-    def __init__(self, grid_conf, data_aug_conf, outC):
+    def __init__(self, grid_conf, data_aug_conf, outC, instance_seg, embedded_dim):
         super(LiftSplatShoot, self).__init__()
         self.grid_conf = grid_conf
         self.data_aug_conf = data_aug_conf
@@ -145,7 +162,7 @@ class LiftSplatShoot(nn.Module):
         # D x H/downsample x D/downsample x 3
         self.D, _, _, _ = self.frustum.shape
         self.camencode = CamEncode(self.D, self.camC, self.downsample)
-        self.bevencode = BevEncode(inC=self.camC, outC=outC)
+        self.bevencode = BevEncode(inC=self.camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
 
         # toggle using QuickCumsum vs. autograd
         self.use_quickcumsum = True
@@ -233,8 +250,8 @@ class LiftSplatShoot(nn.Module):
             x, geom_feats = QuickCumsum.apply(x, geom_feats, ranks)
 
         # griddify (B x C x Z x X x Y)
-        final = torch.zeros((B, C, self.nx[2], self.nx[0], self.nx[1]), device=x.device)
-        final[geom_feats[:, 3], :, geom_feats[:, 2], geom_feats[:, 0], geom_feats[:, 1]] = x
+        final = torch.zeros((B, C, self.nx[2], self.nx[1], self.nx[0]), device=x.device)
+        final[geom_feats[:, 3], :, geom_feats[:, 2], geom_feats[:, 1], geom_feats[:, 0]] = x
 
         # collapse Z
         final = torch.cat(final.unbind(dim=2), 1)
@@ -257,8 +274,8 @@ class LiftSplatShoot(nn.Module):
         return x
 
 
-def compile_model(grid_conf, data_aug_conf, outC):
-    return LiftSplatShoot(grid_conf, data_aug_conf, outC)
+def compile_model(grid_conf, data_aug_conf, outC, instance_seg, embedded_dim):
+    return LiftSplatShoot(grid_conf, data_aug_conf, outC, instance_seg, embedded_dim)
 
 
 def main():
