@@ -122,9 +122,10 @@ class NuscData(torch.utils.data.Dataset):
             # crop_w = int(np.random.uniform(0, max(0, newW - fW)))
             # crop = (crop_w, crop_h, crop_w + fW, crop_h + fH)
             flip = False
-            if self.data_aug_conf['rand_flip'] and np.random.choice([0, 1]):
-                flip = True
-            rotate = np.random.uniform(*self.data_aug_conf['rot_lim'])
+            # if self.data_aug_conf['rand_flip'] and np.random.choice([0, 1]):
+            #     flip = True
+            # rotate = np.random.uniform(*self.data_aug_conf['rot_lim'])
+            rotate = 0
         else:
             # resize = max(fH/H, fW/W)
             # resize_dims = (int(W*resize), int(H*resize))

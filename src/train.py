@@ -96,6 +96,7 @@ def train(version='mini',
     data_aug_conf = {
                     'final_dim': final_dim,
                     'H': H, 'W': W,
+                    'rand_flip': False,
                     'preprocess': preprocess,
                     'line_width': line_width,
                     'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
@@ -117,13 +118,15 @@ def train(version='mini',
                                                               parser_name=parser_name, distributed=distributed)
 
     if method == 'lift_splat':
-        model = compile_model(grid_conf, data_aug_conf, outC=outC)
+        model = compile_model(grid_conf, data_aug_conf, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'HDMapNet':
         model = HDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'VPN':
         model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+    else:
+        raise NotImplementedError
 
     if finetune:
         model.load_state_dict(torch.load(modelf), strict=False)

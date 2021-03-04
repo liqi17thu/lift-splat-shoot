@@ -154,7 +154,7 @@ class VPNet(nn.Module):
         self.downsample = 16
 
         self.camencode = CamEncode(camC)
-        self.view_fusion = ViewFusionModule(fv_size=(9, 22), bv_size=(40, 80))
+        self.view_fusion = ViewFusionModule(fv_size=(8, 22), bv_size=(40, 80))
         self.up_sampler = nn.Upsample(scale_factor=5, mode='bilinear', align_corners=True)
         self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
 
@@ -168,7 +168,7 @@ class VPNet(nn.Module):
         x = x.view(B, N, self.camC, imH//self.downsample, imW//self.downsample)
         return x
 
-    def forward(self, x):
+    def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
         x = self.get_cam_feats(x)
         topdown = self.view_fusion(x)
         topdown = self.up_sampler(topdown)
