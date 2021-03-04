@@ -29,6 +29,7 @@ from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
 from .tools import label_onehot_decoding
 from .models import compile_model
 from .hd_models import HDMapNet, TemporalHDMapNet
+from .vpn_model import VPNet
 
 
 def gen_data(version,
@@ -132,9 +133,9 @@ def lidar_check(version,
                     'cams': cams,
                     'Ncams': 5,
                 }
-    trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
-                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='vizdata')
+    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
+                                                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
+                                                                          parser_name='vizdata', distributed=False)
 
     loader = trainloader if viz_train else valloader
 
@@ -670,9 +671,9 @@ def viz_model_preds_inst(version,
     else:
         parser_name = 'segmentationdata'
 
-    trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
+    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name=parser_name)
+                                          parser_name=parser_name, distributed=False)
     loader = trainloader if viz_train else valloader
     nusc_maps = get_nusc_maps(map_folder)
 
@@ -684,6 +685,8 @@ def viz_model_preds_inst(version,
         model = HDMapNet(xbound, ybound, outC=outC)
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
+    elif method == 'VPN':
+        model = VPNet(outC=outC)
 
     model.load_state_dict(torch.load(modelf))
     model.to(device)

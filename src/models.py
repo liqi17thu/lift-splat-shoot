@@ -274,7 +274,7 @@ class LiftSplatShoot(nn.Module):
         return x
 
 
-def compile_model(grid_conf, data_aug_conf, outC, instance_seg, embedded_dim):
+def compile_model(grid_conf, data_aug_conf, outC, instance_seg=True, embedded_dim=16):
     return LiftSplatShoot(grid_conf, data_aug_conf, outC, instance_seg, embedded_dim)
 
 
