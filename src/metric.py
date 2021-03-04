@@ -1,9 +1,9 @@
 import torch
 from chamferdist import ChamferDistance
-from nuscenes import NuScenes
-
-from src.topdown_mask import MyNuScenesMap
-from .data import NuscData, MAP
+# from nuscenes import NuScenes
+#
+# from src.topdown_mask import MyNuScenesMap
+# from .data import NuscData, MAP
 
 
 class LaneSegMetric(object):
@@ -151,59 +151,71 @@ class LaneSegMetric(object):
 
 
 if __name__ == '__main__':
-    version = 'mini'
-    dataroot = 'data/nuScenes'
+    from chamfer_distance import ChamferDistance
 
-    H = 900
-    W = 1600
-    resize_lim = (0.193, 0.225)
-    final_dim = (128, 352)
-    bot_pct_lim = (0.0, 0.22)
-    rot_lim = (-5.4, 5.4)
-    rand_flip = False
-    ncams = 6
-    line_width = 1
-    preprocess = False
-    overwrite = False
+    chamfer_dist = ChamferDistance()
 
-    xbound = [-30.0, 30.0, 0.15]
-    ybound = [-15.0, 15.0, 0.15]
-    zbound = [-10.0, 10.0, 20.0]
-    dbound = [4.0, 45.0, 1.0]
+    points1 = torch.randn(10, 3)
+    points2 = torch.randn(5, 3)
 
-    grid_conf = {
-        'xbound': xbound,
-        'ybound': ybound,
-        'zbound': zbound,
-        'dbound': dbound,
-    }
-    data_aug_conf = {
-                    'resize_lim': resize_lim,
-                    'final_dim': final_dim,
-                    'rot_lim': rot_lim,
-                    'H': H, 'W': W,
-                    'rand_flip': rand_flip,
-                    'bot_pct_lim': bot_pct_lim,
-                    'preprocess': preprocess,
-                    'line_width': line_width,
-                    'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-                             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
-                    'Ncams': ncams,
-                }
+    dist1, dist2 = chamfer_dist(points1, points2)
 
-    nusc = NuScenes(version='v1.0-{}'.format(version),
-                    dataroot=dataroot,
-                    verbose=False)
-    nusc_maps = {}
-    for map_name in MAP:
-        nusc_maps[map_name] = MyNuScenesMap(dataroot=dataroot, map_name=map_name)
+    print(dist1.shape)
+    print(dist2.shape)
 
-    nusc_data = NuscData(nusc, nusc_maps, False, data_aug_conf, grid_conf)
-
-    rec = nusc.sample[0]
-    seg_mask, inst_mask = nusc_data.get_lineimg(rec)
-
-    lane_seg_metric = LaneSegMetric()
-
-    chamfer_distance = lane_seg_metric.semantic_mask_chamfer_dist(seg_mask[None], seg_mask[None])
-    print(chamfer_distance)
+    # version = 'mini'
+    # dataroot = 'data/nuScenes'
+    #
+    # H = 900
+    # W = 1600
+    # resize_lim = (0.193, 0.225)
+    # final_dim = (128, 352)
+    # bot_pct_lim = (0.0, 0.22)
+    # rot_lim = (-5.4, 5.4)
+    # rand_flip = False
+    # ncams = 6
+    # line_width = 1
+    # preprocess = False
+    # overwrite = False
+    #
+    # xbound = [-30.0, 30.0, 0.15]
+    # ybound = [-15.0, 15.0, 0.15]
+    # zbound = [-10.0, 10.0, 20.0]
+    # dbound = [4.0, 45.0, 1.0]
+    #
+    # grid_conf = {
+    #     'xbound': xbound,
+    #     'ybound': ybound,
+    #     'zbound': zbound,
+    #     'dbound': dbound,
+    # }
+    # data_aug_conf = {
+    #                 'resize_lim': resize_lim,
+    #                 'final_dim': final_dim,
+    #                 'rot_lim': rot_lim,
+    #                 'H': H, 'W': W,
+    #                 'rand_flip': rand_flip,
+    #                 'bot_pct_lim': bot_pct_lim,
+    #                 'preprocess': preprocess,
+    #                 'line_width': line_width,
+    #                 'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+    #                          'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
+    #                 'Ncams': ncams,
+    #             }
+    #
+    # nusc = NuScenes(version='v1.0-{}'.format(version),
+    #                 dataroot=dataroot,
+    #                 verbose=False)
+    # nusc_maps = {}
+    # for map_name in MAP:
+    #     nusc_maps[map_name] = MyNuScenesMap(dataroot=dataroot, map_name=map_name)
+    #
+    # nusc_data = NuscData(nusc, nusc_maps, False, data_aug_conf, grid_conf)
+    #
+    # rec = nusc.sample[0]
+    # seg_mask, inst_mask = nusc_data.get_lineimg(rec)
+    #
+    # lane_seg_metric = LaneSegMetric()
+    #
+    # chamfer_distance = lane_seg_metric.semantic_mask_chamfer_dist(seg_mask[None], seg_mask[None])
+    # print(chamfer_distance)
