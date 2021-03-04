@@ -25,11 +25,12 @@ import matplotlib.patches as mpatches
 from .data import compile_data, MAP, NuscData
 from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
                     SimpleLoss, get_val_info, add_ego, gen_dx_bx,
-                    get_nusc_maps, plot_nusc_map)
+                    get_nusc_maps, plot_nusc_map, DiscriminativeLoss)
 from .tools import label_onehot_decoding
 from .models import compile_model
 from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet
+from .metric import LaneSegMetric
 
 
 def gen_data(version,
@@ -271,7 +272,7 @@ def eval_model(version,
                 modelf,
                 dataroot='/data/nuscenes',
                 gpuid=1,
-                outC=3,
+                outC=4,
                 method='temporal_HDMapNet',
 
                 H=900, W=1600,
@@ -308,11 +309,9 @@ def eval_model(version,
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
                     'Ncams': 5,
                 }
-    trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
+    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='segmentationdata')
-
-    device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
+                                          parser_name='segmentationdata', distributed=False)
 
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
@@ -323,17 +322,22 @@ def eval_model(version,
 
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
-    model.to(device)
+    model.cuda()
 
-    loss_fn = SimpleLoss(1.0).cuda(gpuid)
+    embedded_dim = 16
+    delta_v = 0.5
+    delta_d = 3.0
+    loss_fn = SimpleLoss(1.0).cuda()
+    embedded_loss_fn = DiscriminativeLoss(embedded_dim, delta_v, delta_d).cuda()
 
     model.eval()
-    val_info = get_val_info(model, valloader, loss_fn, device)
+    val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn)
     print(val_info)
     print(np.mean(val_info['iou'][1:]))
     print(np.mean(val_info['accuracy'][1:]))
     print(np.mean(val_info['precision'][1:]))
     print(np.mean(val_info['recall'][1:]))
+    print(np.mean(val_info['chamfer_distance']))
 
 
 def viz_model_preds(version,
