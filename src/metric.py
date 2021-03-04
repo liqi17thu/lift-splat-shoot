@@ -35,9 +35,13 @@ class LaneSegMetric(object):
         for n in range(N):
             for c in range(C):
                 pred_pc_x, pred_pc_y = torch.where(seg_pred[n, c] != 0)
+                if len(pred_pc_x) == 0:
+                    continue
                 pred_pc_coords = torch.stack([pred_pc_x, pred_pc_y], -1).float()
 
                 label_pc_x, label_pc_y = torch.where(seg_label[n, c] != 0)
+                if len(label_pc_x) == 0:
+                    continue
                 label_pc_coords = torch.stack([label_pc_x, label_pc_y], -1).float()
                 CD[n, c] = self.chamfer_distance(pred_pc_coords[None], label_pc_coords[None], bidirectional=True)
         dist = torch.mean(CD, 0)
@@ -216,8 +220,8 @@ if __name__ == '__main__':
 
     rec = nusc.sample[0]
     seg_mask, inst_mask = nusc_data.get_lineimg(rec)
+    seg_mask, inst_mask = seg_mask[1:].cuda(), inst_mask[1:].cuda()
 
     lane_seg_metric = LaneSegMetric()
 
     chamfer_distance = lane_seg_metric.semantic_mask_chamfer_dist(seg_mask[None], seg_mask[None])
-    print(chamfer_distance)

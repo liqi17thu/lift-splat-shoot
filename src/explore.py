@@ -13,11 +13,12 @@ import numpy as np
 import matplotlib as mpl
 import tqdm
 
-mpl.use('Agg')
+# mpl.use('Agg')
 
 from nuscenes import NuScenes
 from .topdown_mask import MyNuScenesMap
 
+from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from PIL import Image
 import matplotlib.patches as mpatches
@@ -30,6 +31,8 @@ from .tools import label_onehot_decoding
 from .models import compile_model
 from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet
+from .tools import onehot_encoding
+from .postprocess import LaneNetPostProcessor
 
 
 def gen_data(version,
@@ -613,9 +616,6 @@ def viz_model_preds_class3(version,
                 counter += 1
 
 
-from .tools import onehot_encoding
-from .postprocess import LaneNetPostProcessor
-from sklearn.decomposition import PCA
 
 
 def viz_model_preds_inst(version,
