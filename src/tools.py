@@ -16,6 +16,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torchvision
+from .metric import LaneSegMetric
+
 
 import matplotlib as mpl
 
@@ -471,7 +473,9 @@ def get_accuracy_precision_recall_multi_class(preds, binimgs):
     return tots, cors, tps, fps, fns, cors / tots, tps / (tps + fps + 1e-7), tps / (tps + fns + 1e-7)
 
 
-def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_var, scale_dist, use_tqdm=False):
+def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, scale_var=1.0, scale_dist=1.0, use_tqdm=True):
+    lane_seg_metric = LaneSegMetric()
+
     model.eval()
     total_seg_loss = 0.0
     total_reg_loss = 0.0
@@ -485,6 +489,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_v
     total_tp = None
     total_fp = None
     total_fn = None
+    total_CD = None
     print('running eval...')
     loader = tqdm(valloader) if use_tqdm else valloader
     with torch.no_grad():
@@ -512,7 +517,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_v
             # iou
             intersect, union, _ = get_batch_iou_multi_class(preds, binimgs)
             tot, cor, tp, fp, fn, _, _, _ = get_accuracy_precision_recall_multi_class(preds, binimgs)
-
+            CD = lane_seg_metric.semantic_mask_chamfer_dist(preds[:, 1:], binimgs[:, 1:])
             if total_intersect is None:
                 total_intersect = intersect
                 total_union = union
@@ -521,6 +526,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_v
                 total_tp = tp
                 total_fp = fp
                 total_fn = fn
+                total_CD = CD
             else:
                 total_intersect += intersect
                 total_union += union
@@ -529,6 +535,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_v
                 total_tp += tp
                 total_fp += fp
                 total_fn += fn
+                total_CD += CD
 
     model.train()
     return {
@@ -540,7 +547,8 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_v
         'iou': total_intersect / total_union,
         'accuracy': total_cor / total_pix,
         'precision': total_tp / (total_tp + total_fp),
-        'recall': total_tp / (total_tp + total_fn)
+        'recall': total_tp / (total_tp + total_fn),
+        'chamfer_distance': total_CD
     }
 
 

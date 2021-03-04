@@ -145,7 +145,7 @@ def train(version='mini',
 
     # loss_fn = FocalLoss(alpha=.25, gamma=2.).cuda(gpuid)
     loss_fn = SimpleLoss(pos_weight).cuda()
-    embedded_loss_fn = DiscriminativeLoss(embedded_dim, delta_v, delta_d).cuda(gpuid)
+    embedded_loss_fn = DiscriminativeLoss(embedded_dim, delta_v, delta_d).cuda()
 
     writer = SummaryWriter(logdir=logdir)
     val_step = 1000 if version == 'mini' else 10000
