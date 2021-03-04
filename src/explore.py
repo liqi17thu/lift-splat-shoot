@@ -284,7 +284,7 @@ def eval_model(version,
                 bot_pct_lim=(0.0, 0.22),
                 rot_lim=(-5.4, 5.4),
                 rand_flip=True,
-                line_width=5,
+                line_width=1,
 
                 xbound=[-30.0, 30.0, 0.15],
                 ybound=[-15.0, 15.0, 0.15],
@@ -324,7 +324,7 @@ def eval_model(version,
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
     elif method == 'VPN':
-        model = HDMapNet(outC=outC)
+        model = VPNet(outC=outC)
 
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
