@@ -1,9 +1,24 @@
 import torch
-from chamferdist import ChamferDistance
-# from nuscenes import NuScenes
-#
-# from src.topdown_mask import MyNuScenesMap
-# from .data import NuscData, MAP
+import torch.nn as nn
+from nuscenes import NuScenes
+
+from src.data import MAP, NuscData
+from src.topdown_mask import MyNuScenesMap
+
+
+class ChamferDistance(nn.Module):
+    def __init__(self):
+        super(ChamferDistance, self).__init__()
+
+    def forward(self, source_pc, target_pc, bidirectional=False):
+        dist = torch.cdist(source_pc, target_pc)
+        dist1, _ = torch.min(dist, 1)
+        dist1 = dist1.mean(-1)
+        if not bidirectional:
+            return dist1
+        dist2, _ = torch.min(dist, 2)
+        dist2 = dist2.mean(-1)
+        return (dist1 + dist2) / 2
 
 
 class LaneSegMetric(object):
@@ -24,8 +39,7 @@ class LaneSegMetric(object):
 
                 label_pc_x, label_pc_y = torch.where(seg_label[n, c] != 0)
                 label_pc_coords = torch.stack([label_pc_x, label_pc_y], -1).float()
-                dist = self.chamfer_distance(pred_pc_coords[None], label_pc_coords[None], bidirectional=True)
-                CD[n, c] = dist
+                CD[n, c] = self.chamfer_distance(pred_pc_coords[None], label_pc_coords[None], bidirectional=True)
         dist = torch.mean(CD, 0)
         return dist
 
@@ -84,7 +98,7 @@ class LaneSegMetric(object):
         CD = torch.zeros((pred_num, label_num), device=inst_label_lines.device)
         for i, inst_pc in enumerate(inst_pred_lines):
             for j, label_pc in enumerate(inst_label_lines):
-                CD[i, j] = self.chamfer_distance(inst_pc[None], label_pc[None])  # TODO: direction ?
+                CD[i, j] = self.chamfer_distance(inst_pc[None], label_pc[None], bidirectional=True)  # TODO: direction ?
         sorted_idx = torch.argsort(CD, dim=-1)[:, 0]
 
         label_picked = torch.zeros(label_num, dtype=torch.bool)
@@ -151,71 +165,59 @@ class LaneSegMetric(object):
 
 
 if __name__ == '__main__':
-    from chamfer_distance import ChamferDistance
+    version = 'mini'
+    dataroot = 'data/nuScenes'
 
-    chamfer_dist = ChamferDistance()
+    H = 900
+    W = 1600
+    resize_lim = (0.193, 0.225)
+    final_dim = (128, 352)
+    bot_pct_lim = (0.0, 0.22)
+    rot_lim = (-5.4, 5.4)
+    rand_flip = False
+    ncams = 6
+    line_width = 1
+    preprocess = False
+    overwrite = False
 
-    points1 = torch.randn(10, 3)
-    points2 = torch.randn(5, 3)
+    xbound = [-30.0, 30.0, 0.15]
+    ybound = [-15.0, 15.0, 0.15]
+    zbound = [-10.0, 10.0, 20.0]
+    dbound = [4.0, 45.0, 1.0]
 
-    dist1, dist2 = chamfer_dist(points1, points2)
+    grid_conf = {
+        'xbound': xbound,
+        'ybound': ybound,
+        'zbound': zbound,
+        'dbound': dbound,
+    }
+    data_aug_conf = {
+                    'resize_lim': resize_lim,
+                    'final_dim': final_dim,
+                    'rot_lim': rot_lim,
+                    'H': H, 'W': W,
+                    'rand_flip': rand_flip,
+                    'bot_pct_lim': bot_pct_lim,
+                    'preprocess': preprocess,
+                    'line_width': line_width,
+                    'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
+                    'Ncams': ncams,
+                }
 
-    print(dist1.shape)
-    print(dist2.shape)
+    nusc = NuScenes(version='v1.0-{}'.format(version),
+                    dataroot=dataroot,
+                    verbose=False)
+    nusc_maps = {}
+    for map_name in MAP:
+        nusc_maps[map_name] = MyNuScenesMap(dataroot=dataroot, map_name=map_name)
 
-    # version = 'mini'
-    # dataroot = 'data/nuScenes'
-    #
-    # H = 900
-    # W = 1600
-    # resize_lim = (0.193, 0.225)
-    # final_dim = (128, 352)
-    # bot_pct_lim = (0.0, 0.22)
-    # rot_lim = (-5.4, 5.4)
-    # rand_flip = False
-    # ncams = 6
-    # line_width = 1
-    # preprocess = False
-    # overwrite = False
-    #
-    # xbound = [-30.0, 30.0, 0.15]
-    # ybound = [-15.0, 15.0, 0.15]
-    # zbound = [-10.0, 10.0, 20.0]
-    # dbound = [4.0, 45.0, 1.0]
-    #
-    # grid_conf = {
-    #     'xbound': xbound,
-    #     'ybound': ybound,
-    #     'zbound': zbound,
-    #     'dbound': dbound,
-    # }
-    # data_aug_conf = {
-    #                 'resize_lim': resize_lim,
-    #                 'final_dim': final_dim,
-    #                 'rot_lim': rot_lim,
-    #                 'H': H, 'W': W,
-    #                 'rand_flip': rand_flip,
-    #                 'bot_pct_lim': bot_pct_lim,
-    #                 'preprocess': preprocess,
-    #                 'line_width': line_width,
-    #                 'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-    #                          'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
-    #                 'Ncams': ncams,
-    #             }
-    #
-    # nusc = NuScenes(version='v1.0-{}'.format(version),
-    #                 dataroot=dataroot,
-    #                 verbose=False)
-    # nusc_maps = {}
-    # for map_name in MAP:
-    #     nusc_maps[map_name] = MyNuScenesMap(dataroot=dataroot, map_name=map_name)
-    #
-    # nusc_data = NuscData(nusc, nusc_maps, False, data_aug_conf, grid_conf)
-    #
-    # rec = nusc.sample[0]
-    # seg_mask, inst_mask = nusc_data.get_lineimg(rec)
-    #
-    # lane_seg_metric = LaneSegMetric()
-    #
-    # chamfer_distance = lane_seg_metric.semantic_mask_chamfer_dist(seg_mask[None], seg_mask[None])
-    # print(chamfer_distance)
+    nusc_data = NuscData(nusc, nusc_maps, False, data_aug_conf, grid_conf)
+
+    rec = nusc.sample[0]
+    seg_mask, inst_mask = nusc_data.get_lineimg(rec)
+
+    lane_seg_metric = LaneSegMetric()
+
+    chamfer_distance = lane_seg_metric.semantic_mask_chamfer_dist(seg_mask[None], seg_mask[None])
+    print(chamfer_distance)
