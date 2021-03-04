@@ -272,10 +272,11 @@ def cumsum_check(version,
 
 def eval_model(version,
                 modelf,
-                dataroot='/data/nuscenes',
-                gpuid=1,
+                dataroot='data/nuScenes',
+                gpuid=0,
                 outC=4,
                 method='temporal_HDMapNet',
+                preprocess=False,
 
                 H=900, W=1600,
                 resize_lim=(0.193, 0.225),
@@ -285,7 +286,7 @@ def eval_model(version,
                 rand_flip=True,
                 line_width=5,
 
-                xbound=[-50.0, 50.0, 0.5],
+                xbound=[-30.0, 30.0, 0.15],
                 ybound=[-15.0, 15.0, 0.15],
                 zbound=[-10.0, 10.0, 20.0],
                 dbound=[4.0, 45.0, 1.0],
@@ -303,6 +304,7 @@ def eval_model(version,
                     'resize_lim': resize_lim,
                     'final_dim': final_dim,
                     'rot_lim': rot_lim,
+                    'preprocess': preprocess,
                     'H': H, 'W': W,
                     'rand_flip': rand_flip,
                     'line_width': line_width,
@@ -321,6 +323,8 @@ def eval_model(version,
         model = HDMapNet(xbound, ybound, outC=outC)
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
+    elif method == 'VPN':
+        model = HDMapNet(outC=outC)
 
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
@@ -335,10 +339,15 @@ def eval_model(version,
     model.eval()
     val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn)
     print(val_info)
+    print('iou: ', end='')
     print(np.mean(val_info['iou'][1:]))
+    print('accuracy: ', end='')
     print(np.mean(val_info['accuracy'][1:]))
+    print('precision: ', end='')
     print(np.mean(val_info['precision'][1:]))
+    print('recall: ', end='')
     print(np.mean(val_info['recall'][1:]))
+    print('chamfer distance: ', end='')
     print(np.mean(val_info['chamfer_distance']))
 
 

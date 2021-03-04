@@ -1,9 +1,5 @@
 import torch
 import torch.nn as nn
-from nuscenes import NuScenes
-
-from src.data import MAP, NuscData
-from src.topdown_mask import MyNuScenesMap
 
 
 class ChamferDistance(nn.Module):
@@ -169,6 +165,9 @@ class LaneSegMetric(object):
 
 
 if __name__ == '__main__':
+    from nuscenes import NuScenes
+    from src.data import MAP, NuscData
+    from src.topdown_mask import MyNuScenesMap
     version = 'mini'
     dataroot = 'data/nuScenes'
 

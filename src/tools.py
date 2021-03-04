@@ -19,9 +19,8 @@ import torchvision
 from .metric import LaneSegMetric
 
 
-import matplotlib as mpl
-
-mpl.use('Agg')
+# import matplotlib as mpl
+# mpl.use('Agg')
 
 import matplotlib.pyplot as plt
 from nuscenes.utils.data_classes import LidarPointCloud
@@ -495,11 +494,12 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
     with torch.no_grad():
         for batch in loader:
             allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask = batch
+            binimgs = binimgs.cuda()
+            inst_mask = inst_mask.cuda()
             preds, embedded = model(allimgs.cuda(), rots.cuda(),
                           trans.cuda(), intrins.cuda(), post_rots.cuda(),
                           post_trans.cuda(), translation.cuda(), yaw_pitch_roll.cuda())
-            binimgs = binimgs.cuda()
-            inst_mask = inst_mask.cuda()
+            onehot_preds = onehot_encoding(preds, dim=1)
 
             # loss
             bs = preds.shape[0]
@@ -517,7 +517,8 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
             # iou
             intersect, union, _ = get_batch_iou_multi_class(preds, binimgs)
             tot, cor, tp, fp, fn, _, _, _ = get_accuracy_precision_recall_multi_class(preds, binimgs)
-            CD = lane_seg_metric.semantic_mask_chamfer_dist(preds[:, 1:], binimgs[:, 1:])
+            CD = lane_seg_metric.semantic_mask_chamfer_dist(onehot_preds[:, 1:], binimgs[:, 1:])
+            CD = CD.cpu().numpy()
             if total_intersect is None:
                 total_intersect = intersect
                 total_union = union
@@ -548,7 +549,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
         'accuracy': total_cor / total_pix,
         'precision': total_tp / (total_tp + total_fp),
         'recall': total_tp / (total_tp + total_fn),
-        'chamfer_distance': total_CD
+        'chamfer_distance': total_CD / len(valloader.dataset),
     }
 
 
