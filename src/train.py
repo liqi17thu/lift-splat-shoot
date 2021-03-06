@@ -27,7 +27,9 @@ parser = argparse.ArgumentParser(description='Train HDMapNet', add_help=False)
 parser.add_argument('--local_rank', default=0, type=int)
 parser.add_argument('--logdir', default='runs', type=str)
 parser.add_argument('--bsz', default=4, type=int)
+parser.add_argument('--version', default='mini', type=str)
 parser.add_argument('--method', default='temporal_HDMapNet', type=str)
+parser.add_argument('--distributed', default=True, type=bool)
 
 
 def write_log(writer, ious, acces, precs, recalls, title, counter):
@@ -224,4 +226,6 @@ if __name__ == '__main__':
 
     train(local_rank=args.local_rank,
           logdir=args.logdir,
-          bsz=args.bsz)
+          bsz=args.bsz,
+          version=args.version,
+          distributed=args.distributed)

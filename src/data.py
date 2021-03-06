@@ -321,7 +321,7 @@ class SegmentationData(NuscData):
 class TemporalSegmentationData(NuscData):
     def __init__(self, *args, **kwargs):
         super(TemporalSegmentationData, self).__init__(*args, **kwargs)
-        self.T = 4
+        self.T = 2
 
     def __getitem__(self, index):
         rec = self.ixes[index]
