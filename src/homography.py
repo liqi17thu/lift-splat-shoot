@@ -60,7 +60,9 @@ def perspective(cam_coords, proj_mat, h, w):
 
     N, _, _ = pix_coords.shape
 
-    pix_coords = pix_coords[:, :2, :] / (pix_coords[:, 2, :][:, None, :] + eps)
+    pix_coords[:, 0] += 40.
+    # pix_coords = pix_coords[:, 1, :]
+    pix_coords = pix_coords[:, :2]
     pix_coords = pix_coords.view(N, 2, h, w)
     pix_coords = pix_coords.permute(0, 2, 3, 1).contiguous()
     return pix_coords
