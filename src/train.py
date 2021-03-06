@@ -173,7 +173,7 @@ def train(version='mini',
                                     yaw_pitch_roll.cuda(),
                                     )
             binimgs = binimgs.cuda()
-            inst_mask = inst_mask.cuda()
+            inst_mask = inst_mask.cuda().sum(1)
             seg_loss = loss_fn(preds, binimgs)
             var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask)
             final_loss = seg_loss * scale_seg + var_loss * scale_var + dist_loss * scale_dist

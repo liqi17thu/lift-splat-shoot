@@ -7,7 +7,7 @@ class ChamferDistance(nn.Module):
         super(ChamferDistance, self).__init__()
 
     def forward(self, source_pc, target_pc, bidirectional=False):
-        dist = torch.cdist(source_pc, target_pc)
+        dist = torch.cdist(source_pc.float(), target_pc.float())
         dist1, _ = torch.min(dist, 1)
         dist1 = dist1.mean(-1)
         if not bidirectional:
@@ -69,11 +69,11 @@ class LaneSegMetric(object):
                 inst_pred_lines = self._get_line_instances_from_mask(inst_pred_mask[n, c])
                 inst_label_lines = self._get_line_instances_from_mask(inst_label_mask[n, c])
                 inst_pred_confidence = []
-                for line in inst_label_lines:
+                for line in inst_pred_lines:
                     confidence = torch.mean(confidence_mask[n, c][line[:, 0], line[:, 1]])
                     inst_pred_confidence.append(confidence)
                 AP_matrix[n, c] = self.single_instance_line_AP(inst_pred_lines, inst_pred_confidence, inst_label_lines, thresholds)
-        return AP_matrix
+        return AP_matrix.mean(0)
 
     def _get_line_instances_from_mask(self, mask):
         # mask: H, W
@@ -84,7 +84,7 @@ class LaneSegMetric(object):
             if idx == 0:
                 continue
             pc_x, pc_y = torch.where(mask == idx)
-            coords = torch.stack([pc_x, pc_y], -1).float()
+            coords = torch.stack([pc_x, pc_y], -1)
             instances.append(coords)
         return instances
 
@@ -95,21 +95,28 @@ class LaneSegMetric(object):
         # return: a list of {'pred': (M, 2), 'label': (N, 2), 'confidence': scalar}
         label_num = len(inst_label_lines)
         pred_num = len(inst_pred_lines)
-        CD = torch.zeros((pred_num, label_num), device=inst_label_lines.device)
+        CD = torch.zeros((pred_num, label_num)).cuda()
         for i, inst_pc in enumerate(inst_pred_lines):
             for j, label_pc in enumerate(inst_label_lines):
                 CD[i, j] = self.chamfer_distance(inst_pc[None], label_pc[None], bidirectional=True)  # TODO: direction ?
-        sorted_idx = torch.argsort(CD, dim=-1)[:, 0]
+
+        if label_num > 0 and pred_num > 0:
+            sorted_idx = torch.argsort(CD, dim=-1)[:, 0]
 
         label_picked = torch.zeros(label_num, dtype=torch.bool)
+
         matched_list = []
         for i in range(pred_num):
+            if label_num > 0:
+                label = inst_label_lines[sorted_idx[i]]
+                label_picked[sorted_idx[i]] = True
+            else:
+                label = None
             matched_list.append({
                     'pred': inst_pred_lines[i],
                     'confidence': inst_pred_confidence[i],
-                    'label': inst_label_lines[sorted_idx[i]]
+                    'label': label
                 })
-            label_picked[sorted_idx[i]] = True
 
         for i in range(label_num):
             if not label_picked[i]:
@@ -129,6 +136,13 @@ class LaneSegMetric(object):
             pred = match_item['pred']
             label = match_item['label']
 
+            if pred is None:
+                continue
+            if label is None:
+                TP.append(TP[-1])
+                FP.append(FP[-1] + 1)
+                continue
+
             dist = self.chamfer_distance(pred[None], label[None], bidirectional=True)
             if dist < threshold:
                 TP.append(TP[-1] + 1)
@@ -136,8 +150,8 @@ class LaneSegMetric(object):
             else:
                 TP.append(TP[-1])
                 FP.append(FP[-1] + 1)
-        TP = torch.tensor(TP)
-        FP = torch.tensor(FP)
+        TP = torch.tensor(TP[1:])
+        FP = torch.tensor(FP[1:])
 
         precision = TP / (TP + FP)
         recall = TP / num_gt

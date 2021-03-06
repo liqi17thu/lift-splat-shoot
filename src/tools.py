@@ -471,9 +471,17 @@ def get_accuracy_precision_recall_multi_class(preds, binimgs):
     fns = np.array(fns)
     return tots, cors, tps, fps, fns, cors / tots, tps / (tps + fps + 1e-7), tps / (tps + fns + 1e-7)
 
+import random
+from .postprocess import LaneNetPostProcessor
 
 def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, scale_var=1.0, scale_dist=1.0, use_tqdm=True):
     lane_seg_metric = LaneSegMetric()
+    post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
+    thresholds = [2., 5., 10.]
+
+    color_map = []
+    for i in range(30):
+        color_map.append([random.randint(0, 256), random.randint(0, 256), random.randint(0, 256)])
 
     model.eval()
     total_seg_loss = 0.0
@@ -489,6 +497,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
     total_fp = None
     total_fn = None
     total_CD = None
+    total_AP = None
     print('running eval...')
     loader = tqdm(valloader) if use_tqdm else valloader
     with torch.no_grad():
@@ -504,7 +513,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
             # loss
             bs = preds.shape[0]
             seg_loss = loss_fn(preds, binimgs).item() * bs
-            var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask)
+            var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask.sum(1))
             var_loss, dist_loss, reg_loss = var_loss.item() * bs, dist_loss.item() * bs, reg_loss.item() * bs
             final_loss = seg_loss * scale_seg + var_loss + scale_var + dist_loss * scale_dist
 
@@ -518,6 +527,24 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
             intersect, union, _ = get_batch_iou_multi_class(preds, binimgs)
             tot, cor, tp, fp, fn, _, _, _ = get_accuracy_precision_recall_multi_class(preds, binimgs)
             CD = lane_seg_metric.semantic_mask_chamfer_dist(onehot_preds[:, 1:], binimgs[:, 1:])
+
+            inst_pred_mask = torch.zeros_like(inst_mask, dtype=torch.int)
+            for si in range(allimgs.shape[0]):
+                count = 0
+                for i in range(1, onehot_preds.shape[1]):
+                    single_mask = onehot_preds[si][i].bool()
+                    single_embedded = embedded[si].permute(1, 2, 0)
+                    single_class_inst_mask, single_class_inst_coords = post_processor.postprocess(single_mask.cpu().numpy(), single_embedded.cpu().numpy())
+                    if single_class_inst_mask is None:
+                        continue
+
+                    num_inst = len(single_class_inst_coords)
+
+                    single_class_inst_mask[single_class_inst_mask != 0] += count
+                    inst_pred_mask[si, i] = torch.tensor(single_class_inst_mask).cuda()
+                    count += num_inst
+
+            AP = lane_seg_metric.instance_mask_AP(inst_pred_mask[:, 1:], inst_mask[:, 1:], preds.softmax(1)[:, 1:], thresholds).cpu().numpy()
             CD = CD.cpu().numpy()
             if total_intersect is None:
                 total_intersect = intersect
@@ -528,6 +555,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
                 total_fp = fp
                 total_fn = fn
                 total_CD = CD
+                total_AP = AP
             else:
                 total_intersect += intersect
                 total_union += union
@@ -537,6 +565,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
                 total_fp += fp
                 total_fn += fn
                 total_CD += CD
+                total_AP += AP
 
     model.train()
     return {
@@ -550,6 +579,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
         'precision': total_tp / (total_tp + total_fp),
         'recall': total_tp / (total_tp + total_fn),
         'chamfer_distance': total_CD / len(valloader.dataset),
+        'Average_precision': total_AP / len(valloader.dataset),
     }
 
 

@@ -349,6 +349,8 @@ def eval_model(version,
     print(np.mean(val_info['recall'][1:]))
     print('chamfer distance: ', end='')
     print(np.mean(val_info['chamfer_distance']))
+    print('mAP: ', end='')
+    print(np.mean(val_info['Average_precision']))
 
 
 def viz_model_preds(version,
@@ -741,6 +743,7 @@ def viz_model_preds_inst(version,
             out = out.softmax(1).cpu()
             preds = onehot_encoding(out).cpu().numpy()
             embedded = embedded.cpu()
+            inst_label = inst_label.sum(1)
 
             N, C, H, W = embedded.shape
             embedded_test = embedded.permute(0, 2, 3, 1).reshape(N*H*W, C)
