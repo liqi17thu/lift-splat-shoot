@@ -123,7 +123,7 @@ class BevEncode(nn.Module):
 
 
 class HDMapNet(nn.Module):
-    def __init__(self, xbound, ybound, outC, camC=64, instance_seg=True, embedded_dim=16):
+    def __init__(self, xbound, ybound, outC, camC=64, instance_seg=True, embedded_dim=16, cam_encoding=True, bev_encoding=True):
         super(HDMapNet, self).__init__()
         self.xbound = xbound
         self.ybound = ybound
@@ -131,9 +131,12 @@ class HDMapNet(nn.Module):
         self.downsample = 16
         self.ipm = IPM(xbound, ybound, N=6, C=camC, z_roll_pitch=True)
         # self.ipm = IPM(xbound, ybound, N=6, C=camC, visual=True)
-
-        self.camencode = CamEncode(camC)
-        self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+        self.cam_encoding = cam_encoding
+        if cam_encoding:
+            self.camencode = CamEncode(camC)
+        self.bev_encoding = bev_encoding
+        if bev_encoding:
+            self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
 
     def get_cam_feats(self, x):
         """Return B x N x D x H/downsample x W/downsample x C
@@ -160,23 +163,28 @@ class HDMapNet(nn.Module):
         post_RTs[:, :, :3, :3] = post_rots
         post_RTs[:, :, :3, 3] = post_trans
 
-        scale = torch.Tensor([
-            [1/self.downsample, 0, 0, 0],
-            [0, 1/self.downsample, 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ]).cuda()
-        post_RTs = scale @ post_RTs
+        if self.cam_encoding:
+            scale = torch.Tensor([
+                [1/self.downsample, 0, 0, 0],
+                [0, 1/self.downsample, 0, 0],
+                [0, 0, 1, 0],
+                [0, 0, 0, 1]
+            ]).cuda()
+            post_RTs = scale @ post_RTs
 
         return Ks, RTs, post_RTs
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
-        x = self.get_cam_feats(x)
+        if self.cam_encoding:
+            x = self.get_cam_feats(x)
 
         Ks, RTs, post_RTs = self.get_Ks_RTs_and_post_RTs(intrins, rots, trans, post_rots, post_trans)
         topdown = self.ipm(x, Ks, RTs, translation, yaw_pitch_roll, post_RTs)
 
-        return self.bevencode(topdown)
+        if self.bev_encoding:
+            return self.bevencode(topdown)
+        else:
+            return topdown
 
 
 class TemporalHDMapNet(HDMapNet):

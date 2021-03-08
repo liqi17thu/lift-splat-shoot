@@ -34,6 +34,7 @@ from .vpn_model import VPNet
 from .postprocess import LaneNetPostProcessor
 from .metric import LaneSegMetric
 
+from .tools import denormalize_img
 
 def gen_data(version,
             dataroot='data/nuScenes',
@@ -95,6 +96,78 @@ def gen_data(version,
 
         Image.fromarray(seg_mask.numpy().astype('uint8')).save(seg_path)
         Image.fromarray(inst_mask.numpy().astype('uint8')).save(inst_path)
+
+
+
+def viz_ipm_with_label(version,
+            dataroot='data/nuScenes',
+
+            H=900, W=1600,
+            resize_lim=(0.193, 0.225),
+            final_dim=(128, 352),
+            bot_pct_lim=(0.0, 0.22),
+            rot_lim=(-5.4, 5.4),
+            rand_flip=False,
+            ncams=6,
+            line_width=5,
+            preprocess=False,
+            overwrite=False,
+
+            xbound=[-30.0, 30.0, 0.15],
+            ybound=[-15.0, 15.0, 0.15],
+            zbound=[-10.0, 10.0, 20.0],
+            dbound=[4.0, 45.0, 1.0],
+          ):
+    grid_conf = {
+        'xbound': xbound,
+        'ybound': ybound,
+        'zbound': zbound,
+        'dbound': dbound,
+    }
+    data_aug_conf = {
+                    'resize_lim': resize_lim,
+                    'final_dim': final_dim,
+                    'rot_lim': rot_lim,
+                    'H': H, 'W': W,
+                    'rand_flip': rand_flip,
+                    'bot_pct_lim': bot_pct_lim,
+                    'preprocess': preprocess,
+                    'line_width': line_width,
+                    'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
+                    'Ncams': ncams,
+                }
+
+    nusc = NuScenes(version='v1.0-{}'.format(version),
+                    dataroot=dataroot,
+                    verbose=False)
+    nusc_maps = {}
+    for map_name in MAP:
+        nusc_maps[map_name] = MyNuScenesMap(dataroot=dataroot, map_name=map_name)
+
+    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
+                                          grid_conf=grid_conf, bsz=4, nworkers=10,
+                                          parser_name='segmentationdata', distributed=False)
+
+    ipm = HDMapNet(xbound, ybound, outC=3, cam_encoding=False, bev_encoding=False)
+
+    with torch.no_grad():
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(valloader):
+            topdown = ipm(imgs.cuda(),
+                    rots.cuda(),
+                    trans.cuda(),
+                    intrins.cuda(),
+                    post_rots.cuda(),
+                    post_trans.cuda(),
+                    translation.cuda(),
+                    yaw_pitch_roll.cuda(),
+                    )
+
+            topdown = denormalize_img(topdown)
+            for si in range(binimgs.shape[0]):
+                plt.imshow(topdown[si])
+                plt.imshow(inst_label[si], alpha=0.6)
+                plt.savefig(f'topdown_{batchi:06}_{si:03}.png')
 
 
 def lidar_check(version,
