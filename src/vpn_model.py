@@ -41,11 +41,12 @@ class CamEncode(nn.Module):
 
         self.up1 = Up(320+112, self.C)
 
-        # self.downsample_idx = [1, 3, 5, 11]
-        # self.spatial_gates = []
-        # for i in range(4):
-        #     self.spatial_gates.append(SpatialGate())
-        # self.spatial_gates = nn.ModuleList(self.spatial_gates)
+        # self.sp_idx = [1, 3, 5, 11]
+        self.sp_idx = [6, 8, 10, 12, 14]
+        self.spatial_gates = []
+        for i in range(len(self.sp_idx)):
+            self.spatial_gates.append(SpatialGate())
+        self.spatial_gates = nn.ModuleList(self.spatial_gates)
 
     def get_eff_depth(self, x):
         # adapted from https://github.com/lukemelas/EfficientNet-PyTorch/blob/master/efficientnet_pytorch/model.py#L231
@@ -60,8 +61,8 @@ class CamEncode(nn.Module):
             drop_connect_rate = self.trunk._global_params.drop_connect_rate
             if drop_connect_rate:
                 drop_connect_rate *= float(idx) / len(self.trunk._blocks) # scale drop connect_rate
-            # if idx in self.downsample_idx:
-            #     x = self.spatial_gates[self.downsample_idx.index(idx)](x)
+            if idx in self.sp_idx:
+                x = self.spatial_gates[self.sp_idx.index(idx)](x)
             x = block(x, drop_connect_rate=drop_connect_rate)
             if prev_x.size(2) > x.size(2):
                 endpoints['reduction_{}'.format(len(endpoints)+1)] = prev_x
