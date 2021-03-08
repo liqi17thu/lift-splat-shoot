@@ -19,7 +19,8 @@ from .tools import get_batch_iou_multi_class, get_val_info
 from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss, SimpleLoss, DiscriminativeLoss
 from .hd_models import HDMapNet, TemporalHDMapNet
-from .vpn_model import VPNet
+from .vpn_model import VPNet, TemporalVPNet
+from .vit_model import VITNet
 
 
 import argparse
@@ -125,8 +126,12 @@ def train(version='mini',
         model = HDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+    elif method == 'temporal_VPN':
+        model = TemporalVPNet(xbound, ybound, outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'VPN':
         model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+    elif method == 'VIT':
+        model = VITNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     else:
         raise NotImplementedError
 
