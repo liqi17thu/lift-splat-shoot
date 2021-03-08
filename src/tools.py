@@ -478,7 +478,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
     lane_seg_metric = LaneSegMetric()
     if eval_mAP:
         post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
-        thresholds = [2., 5., 10.]
+        thresholds = [1.33, 3.33, 6.67]
 
     color_map = []
     for i in range(30):
@@ -528,7 +528,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
             intersect, union, _ = get_batch_iou_multi_class(preds, binimgs)
             tot, cor, tp, fp, fn, _, _, _ = get_accuracy_precision_recall_multi_class(preds, binimgs)
             CD = lane_seg_metric.semantic_mask_chamfer_dist(onehot_preds[:, 1:], binimgs[:, 1:])
-            CD = CD.cpu().numpy()
+            CD = CD.cpu().numpy() * bs
 
             if eval_mAP:
                 inst_pred_mask = torch.zeros_like(inst_mask, dtype=torch.int)
@@ -547,7 +547,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
                         inst_pred_mask[si, i] = torch.tensor(single_class_inst_mask).cuda()
                         count += num_inst
 
-                AP = lane_seg_metric.instance_mask_AP(inst_pred_mask[:, 1:], inst_mask[:, 1:], preds.softmax(1)[:, 1:], thresholds).cpu().numpy()
+                AP = lane_seg_metric.instance_mask_AP(inst_pred_mask[:, 1:], inst_mask[:, 1:], preds.softmax(1)[:, 1:], thresholds).cpu().numpy() * bs
 
             if total_intersect is None:
                 total_intersect = intersect

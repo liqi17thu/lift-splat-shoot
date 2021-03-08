@@ -153,6 +153,9 @@ class LaneSegMetric(object):
         TP = torch.tensor(TP[1:])
         FP = torch.tensor(FP[1:])
 
+        # print(f'TP: {TP}')
+        # print(f'FP: {FP}')
+
         precision = TP / (TP + FP)
         recall = TP / num_gt
         return precision, recall
@@ -170,7 +173,7 @@ class LaneSegMetric(object):
         acc_precision = 0.
         total = len(sampled_recalls)
         for r in sampled_recalls:
-            idx = torch.where(recall > r)[0]
+            idx = torch.where(recall >= r)[0]
             if len(idx) == 0:
                 continue
             idx = idx[0]
