@@ -162,9 +162,9 @@ class myViT(ViT):
         return self.mlp_head(x)
 
 
-class VPNet(nn.Module):
+class VITNet(nn.Module):
     def __init__(self, outC, camC=64, instance_seg=True, embedded_dim=16):
-        super(VPNet, self).__init__()
+        super(VITNet, self).__init__()
         self.camC = camC
         self.downsample = 16
         self.transformer = myViT(image_size=66,
@@ -193,9 +193,10 @@ class VPNet(nn.Module):
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
         x = self.get_cam_feats(x)
+        B, _, _, _, _ = x.shape
         x = torch.cat([torch.cat((x[:, 0], x[:, 1], x[:, 2]), -1), torch.cat((x[:, 3], x[:, 4], x[:, 5]), -1)], -2)
         topdown = self.transformer(x)
-        x = x.view(4, 64, 40, 80)
+        topdown = topdown.view(B, 64, 40, 80)
         topdown = self.up_sampler(topdown)
         return self.bevencode(topdown)
 
