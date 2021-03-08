@@ -18,6 +18,7 @@ if __name__ == '__main__':
         'gen_data': explore.gen_data,
         'train': train.train,
         'eval_model': explore.eval_model,
+        'viz_ipm_with_label': explore.viz_ipm_with_label,
         'viz_model_preds': explore.viz_model_preds,
         'viz_model_preds_class3': explore.viz_model_preds_class3,
         'viz_model_preds_inst': explore.viz_model_preds_inst,
