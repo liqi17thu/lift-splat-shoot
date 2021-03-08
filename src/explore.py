@@ -337,7 +337,7 @@ def eval_model(version,
     embedded_loss_fn = DiscriminativeLoss(embedded_dim, delta_v, delta_d).cuda()
 
     model.eval()
-    val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn)
+    val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, eval_mAP=True)
     print(val_info)
     print('iou: ', end='')
     print(np.mean(val_info['iou'][1:]))
