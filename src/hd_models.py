@@ -129,7 +129,7 @@ class HDMapNet(nn.Module):
         self.ybound = ybound
         self.camC = camC
         self.downsample = 16
-        self.ipm = IPM(xbound, ybound, N=6, C=camC)
+        self.ipm = IPM(xbound, ybound, N=6, C=camC, z_roll_pitch=True)
         # self.ipm = IPM(xbound, ybound, N=6, C=camC, visual=True)
 
         self.camencode = CamEncode(camC)

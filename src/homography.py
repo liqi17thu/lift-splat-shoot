@@ -215,7 +215,8 @@ class IPM(nn.Module):
         self.h = int((ybound[1] - ybound[0]) / ybound[2])
 
         if z_roll_pitch:
-            self.plane_esti = PlaneEstimationModule(N, C)
+            # self.plane_esti = PlaneEstimationModule(N, C)
+            pass
         else:
             zs = torch.tensor([0.]).cuda()
             yaws = torch.tensor([0.]).cuda()
@@ -244,13 +245,13 @@ class IPM(nn.Module):
         B, N, H, W, C = images.shape
 
         if self.z_roll_pitch:
-            z, roll, pitch = self.plane_esti(images)
+            # z, roll, pitch = self.plane_esti(images)
             zs = translation[:, 2]
             rolls = yaw_roll_pitch[:, 1]
             pitchs = yaw_roll_pitch[:, 2]
-            zs += z
-            rolls += roll
-            pitchs += pitch
+            # zs += z
+            # rolls += roll
+            # pitchs += pitch
             planes = plane_grid(self.xbound, self.ybound, zs, torch.zeros_like(rolls), rolls, pitchs)
             planes = planes.repeat(N, 1, 1)
         else:
