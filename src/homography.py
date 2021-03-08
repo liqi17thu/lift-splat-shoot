@@ -159,7 +159,7 @@ def plane_grid(xbound, ybound, zs, yaws, rolls, pitchs):
     d = torch.ones_like(x).cuda()
     coords = torch.stack([x, y, z, d], axis=1)
 
-    rotation_matrix = rotation_from_euler(rolls, pitchs, yaws).cuda()
+    rotation_matrix = rotation_from_euler(pitchs, rolls, yaws).cuda()
 
     coords = rotation_matrix @ coords
     return coords
@@ -233,11 +233,12 @@ class IPM(nn.Module):
 
     def mask_warped(self, warped_fv_images):
         warped_fv_images[:, CAM_F, :, :self.w//2, :] *= 0  # CAM_FRONT
-        warped_fv_images[:, CAM_FL] *= self.flipped_tri_mask  # CAM_FRONT_LEFT
-        warped_fv_images[:, CAM_FR] *= 1 - self.tri_mask  # CAM_FRONT_RIGHT
+        warped_fv_images[:, CAM_FL] *= self.flipped_tri_mask.bool()  # CAM_FRONT_LEFT
+        # warped_fv_images[:, CAM_FR] *= 1 - self.tri_mask.bool()  # CAM_FRONT_RIGHT
+        warped_fv_images[:, CAM_FR] *= ~ self.tri_mask.bool()  # CAM_FRONT_RIGHT
         warped_fv_images[:, CAM_B, :, self.w//2:, :] *= 0  # CAM_BACK
-        warped_fv_images[:, CAM_BL] *= self.tri_mask  # CAM_BACK_LEFT
-        warped_fv_images[:, CAM_BR] *= 1 - self.flipped_tri_mask  # CAM_BACK_RIGHT
+        warped_fv_images[:, CAM_BL] *= self.tri_mask.bool()  # CAM_BACK_LEFT
+        warped_fv_images[:, CAM_BR] *= ~self.flipped_tri_mask.bool()  # CAM_BACK_RIGHT
         return warped_fv_images
 
     def forward(self, images, Ks, RTs, translation, yaw_roll_pitch, post_RTs=None):
@@ -260,7 +261,8 @@ class IPM(nn.Module):
         images = images.reshape(B*N, H, W, C)
         warped_fv_images = ipm_from_parameters(images, planes, Ks, RTs, self.h, self.w, post_RTs)
         warped_fv_images = warped_fv_images.reshape((B, N, self.h, self.w, C))
-        # warped_fv_images = self.mask_warped(warped_fv_images)
+        if self.visual:
+            warped_fv_images = self.mask_warped(warped_fv_images)
 
         if self.visual:
             warped_topdown = warped_fv_images[:, CAM_F] + warped_fv_images[:, CAM_B]  # CAM_FRONT + CAM_BACK
