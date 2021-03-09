@@ -42,7 +42,8 @@ class CamEncode(nn.Module):
         self.up1 = Up(320+112, self.C)
 
         # self.sp_idx = [1, 3, 5, 11]
-        self.sp_idx = [6, 8, 10, 12, 14]
+        # self.sp_idx = [6, 8, 10, 12, 14]
+        self.sp_idx = []
         self.spatial_gates = []
         for i in range(len(self.sp_idx)):
             self.spatial_gates.append(SpatialGate())
@@ -162,9 +163,10 @@ class ViewFusionModule(nn.Module):
 
 
 class VPNet(nn.Module):
-    def __init__(self, outC, camC=64, instance_seg=True, embedded_dim=16):
+    def __init__(self, outC, camC=64, instance_seg=True, embedded_dim=16, extrinsic=True):
         super(VPNet, self).__init__()
         self.camC = camC
+        self.extrinsic = extrinsic
         self.downsample = 16
 
         xbound = [-60, 60, 0.6]
@@ -173,7 +175,10 @@ class VPNet(nn.Module):
 
         self.camencode = CamEncode(camC)
         self.view_fusion = ViewFusionModule(fv_size=(8, 22), bv_size=(40, 80))
-        self.up_sampler = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        if self.extrinsic:
+            self.up_sampler = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        else:
+            self.up_sampler = nn.Upsample(scale_factor=5, mode='bilinear', align_corners=True)
         self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
 
     def get_Ks_RTs_and_post_RTs(self, intrins, rots, trans, post_rots, post_trans):
@@ -216,8 +221,11 @@ class VPNet(nn.Module):
     def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
         x = self.get_cam_feats(x)
         x = self.view_fusion(x)
-        Ks, RTs, post_RTs = self.get_Ks_RTs_and_post_RTs(intrins, rots, trans, post_rots, post_trans)
-        topdown = self.ipm(x, Ks, RTs, translation, yaw_pitch_roll, post_RTs)
+        if self.extrinsic:
+            Ks, RTs, post_RTs = self.get_Ks_RTs_and_post_RTs(intrins, rots, trans, post_rots, post_trans)
+            topdown = self.ipm(x, Ks, RTs, translation, yaw_pitch_roll, post_RTs)
+        else:
+            topdown = x.mean(1)
         topdown = self.up_sampler(topdown)
         return self.bevencode(topdown)
 
