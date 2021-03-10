@@ -405,6 +405,7 @@ def eval_model(version,
                 ybound=[-15.0, 15.0, 0.15],
                 zbound=[-10.0, 10.0, 20.0],
                 dbound=[4.0, 45.0, 1.0],
+                eval_mAP=False,
 
                 bsz=4,
                 nworkers=10,
@@ -452,7 +453,10 @@ def eval_model(version,
     embedded_loss_fn = DiscriminativeLoss(embedded_dim, delta_v, delta_d).cuda()
 
     model.eval()
-    val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, eval_mAP=True)
+    val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, eval_mAP=eval_mAP)
+    val_info['chamfer_distance'] *= 0.15
+    val_info['CD_pred (precision)'] *= 0.15
+    val_info['CD_label (recall)'] *= 0.15
     print(val_info)
     print('iou: ', end='')
     print(np.mean(val_info['iou'][1:]))
@@ -608,7 +612,7 @@ def viz_model_preds_class3(version,
                             final_dim=(128, 352),
                             bot_pct_lim=(0.0, 0.22),
                             rot_lim=(-5.4, 5.4),
-                            line_width=2,
+                            line_width=1,
                             rand_flip=True,
 
                             xbound=[-30.0, 30.0, 0.15],

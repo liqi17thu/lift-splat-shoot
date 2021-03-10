@@ -475,6 +475,7 @@ import random
 from .postprocess import LaneNetPostProcessor
 
 def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, scale_var=1.0, scale_dist=1.0, use_tqdm=True, eval_mAP=False):
+
     lane_seg_metric = LaneSegMetric()
     if eval_mAP:
         post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
@@ -490,6 +491,10 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
     total_dist_loss = 0.0
     total_var_loss = 0.0
     total_final_loss = 0.0
+    total_CD1 = None
+    total_CD2 = None
+    total_CD_num1 = None
+    total_CD_num2 = None
     total_intersect = None
     total_union = None
     total_pix = None
@@ -497,7 +502,6 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
     total_tp = None
     total_fp = None
     total_fn = None
-    total_CD = None
     total_AP = 0
     print('running eval...')
     loader = tqdm(valloader) if use_tqdm else valloader
@@ -527,8 +531,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
             # iou
             intersect, union, _ = get_batch_iou_multi_class(preds, binimgs)
             tot, cor, tp, fp, fn, _, _, _ = get_accuracy_precision_recall_multi_class(preds, binimgs)
-            CD = lane_seg_metric.semantic_mask_chamfer_dist(onehot_preds[:, 1:], binimgs[:, 1:])
-            CD = CD.cpu().numpy() * bs
+            CD1, CD2, num1, num2 = lane_seg_metric.semantic_mask_chamfer_dist_cum(onehot_preds[:, 1:], binimgs[:, 1:])
 
             if eval_mAP:
                 inst_pred_mask = torch.zeros_like(inst_mask, dtype=torch.int)
@@ -557,7 +560,10 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
                 total_tp = tp
                 total_fp = fp
                 total_fn = fn
-                total_CD = CD
+                total_CD1 = CD1
+                total_CD2 = CD2
+                total_CD_num1 = num1
+                total_CD_num2 = num2
                 if eval_mAP:
                     total_AP = AP
             else:
@@ -568,11 +574,21 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
                 total_tp += tp
                 total_fp += fp
                 total_fn += fn
-                total_CD += CD
+                total_CD1 += CD1
+                total_CD2 += CD2
+                total_CD_num1 += num1
+                total_CD_num2 += num2
                 if eval_mAP:
                     total_AP += AP
 
     model.train()
+    # print(full_CD.shape)
+    # with open('CD_matrix.npy', 'wb') as f:
+    #     np.save(f, full_CD)
+    total_CD1 = total_CD1.cpu().numpy()
+    total_CD2 = total_CD2.cpu().numpy()
+    total_CD_num1 = total_CD_num1.cpu().numpy()
+    total_CD_num2 = total_CD_num2.cpu().numpy()
     return {
         'seg_loss': total_seg_loss / len(valloader.dataset),
         'reg_loss': total_reg_loss / len(valloader.dataset),
@@ -583,7 +599,9 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
         'accuracy': total_cor / total_pix,
         'precision': total_tp / (total_tp + total_fp),
         'recall': total_tp / (total_tp + total_fn),
-        'chamfer_distance': total_CD / len(valloader.dataset),
+        'CD_pred (precision)': total_CD1 / total_CD_num1,
+        'CD_label (recall)': total_CD2 / total_CD_num2,
+        'chamfer_distance': total_CD1 / total_CD_num1 + total_CD2 / total_CD_num2,
         'Average_precision': total_AP / len(valloader.dataset),
     }
 

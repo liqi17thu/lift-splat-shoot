@@ -139,27 +139,34 @@ class ViewFusionModule(nn.Module):
         super(ViewFusionModule, self).__init__()
         self.n_views = n_views
         self.hw_mat = []
+        # self.spatial_gates = []
         self.bv_size = bv_size
         fv_dim = fv_size[0] * fv_size[1]
         bv_dim = bv_size[0] * bv_size[1]
         for i in range(self.n_views):
             fc_transform = nn.Sequential(
                 nn.Linear(fv_dim, bv_dim),
+                # nn.BatchNorm1d(64),
                 nn.ReLU(),
                 nn.Linear(bv_dim, bv_dim),
+                # nn.BatchNorm1d(64),
                 nn.ReLU()
             )
             self.hw_mat.append(fc_transform)
+            # self.spatial_gates.append(SpatialGate())
         self.hw_mat = nn.ModuleList(self.hw_mat)
+        # self.spatial_gates = nn.ModuleList(self.spatial_gates)
 
     def forward(self, feat):
         B, N, C, H, W = feat.shape
         feat = feat.view(B, N, C, H*W)
-        output = []
+        outputs = []
         for i in range(N):
-            output.append(self.hw_mat[i](feat[:, i]).view(B, C, self.bv_size[0], self.bv_size[1]))
-        output = torch.stack(output, 1)
-        return output
+            output = self.hw_mat[i](feat[:, i]).view(B, C, self.bv_size[0], self.bv_size[1])
+            # output = self.spatial_gates[i](output)
+            outputs.append(output)
+        outputs = torch.stack(outputs, 1)
+        return outputs
 
 
 class VPNet(nn.Module):
