@@ -170,7 +170,7 @@ class ViewFusionModule(nn.Module):
 
 
 class VPNet(nn.Module):
-    def __init__(self, outC, camC=64, instance_seg=True, embedded_dim=16, extrinsic=True):
+    def __init__(self, outC, camC=64, instance_seg=True, embedded_dim=16, extrinsic=False):
         super(VPNet, self).__init__()
         self.camC = camC
         self.extrinsic = extrinsic
