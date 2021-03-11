@@ -6,15 +6,24 @@ class ChamferDistance(nn.Module):
     def __init__(self):
         super(ChamferDistance, self).__init__()
 
-    def forward(self, source_pc, target_pc, bidirectional=False):
+    def forward(self, source_pc, target_pc, threshold=33.33, cum=False, bidirectional=True):
         dist = torch.cdist(source_pc.float(), target_pc.float())
-        dist1, _ = torch.min(dist, 1)
+        dist1, _ = torch.min(dist, 2)
+        dist1[dist1 > threshold] = threshold
+        dist2, _ = torch.min(dist, 1)
+        dist2[dist2 > threshold] = threshold
+        if cum:
+            len1 = dist1.shape[-1]
+            len2 = dist2.shape[-1]
+            dist1 = dist1.sum(-1)
+            dist2 = dist2.sum(-1)
+            return dist1, dist2, len1, len2
         dist1 = dist1.mean(-1)
-        if not bidirectional:
-            return dist1
-        dist2, _ = torch.min(dist, 2)
         dist2 = dist2.mean(-1)
-        return (dist1 + dist2) / 2
+        if bidirectional:
+            return (dist1 + dist2) / 2
+        else:
+            return dist1, dist2
 
 
 class LaneSegMetric(object):
@@ -22,7 +31,42 @@ class LaneSegMetric(object):
         self.chamfer_distance = ChamferDistance()
         self.sampled_recalls = torch.linspace(0, 1, 11)
 
-    def semantic_mask_chamfer_dist(self, seg_pred, seg_label):
+    def semantic_mask_chamfer_dist_cum(self, seg_pred, seg_label, threshold=33.33):
+        # seg_label: N, C, H, W
+        # seg_pred: N, C, H, W
+        N, C, H, W = seg_label.shape
+
+        cum_CD1 = torch.zeros(C, device=seg_label.device)
+        cum_CD2 = torch.zeros(C, device=seg_label.device)
+        cum_num1 = torch.zeros(C, device=seg_label.device)
+        cum_num2 = torch.zeros(C, device=seg_label.device)
+        for n in range(N):
+            for c in range(C):
+                pred_pc_x, pred_pc_y = torch.where(seg_pred[n, c] != 0)
+                label_pc_x, label_pc_y = torch.where(seg_label[n, c] != 0)
+                if len(pred_pc_x) == 0 and len(label_pc_x) == 0:
+                    continue
+
+                if len(label_pc_x) == 0:
+                    cum_CD1[c] += len(pred_pc_x) * threshold
+                    cum_num1[c] += len(pred_pc_x)
+                    continue
+
+                if len(pred_pc_x) == 0:
+                    cum_CD2[c] += len(label_pc_x) * threshold
+                    cum_num2[c] += len(label_pc_x)
+                    continue
+
+                pred_pc_coords = torch.stack([pred_pc_x, pred_pc_y], -1).float()
+                label_pc_coords = torch.stack([label_pc_x, label_pc_y], -1).float()
+                CD1, CD2, len1, len2 = self.chamfer_distance(pred_pc_coords[None], label_pc_coords[None], threshold=threshold, cum=True)
+                cum_CD1[c] += CD1[0]
+                cum_CD2[c] += CD2[0]
+                cum_num1[c] += len1
+                cum_num2[c] += len2
+        return cum_CD1, cum_CD2, cum_num1, cum_num2
+
+    def semantic_mask_chamfer_dist(self, seg_pred, seg_label, threshold=33.33):
         # seg_label: N, C, H, W
         # seg_pred: N, C, H, W
         N, C, H, W = seg_label.shape
@@ -31,15 +75,17 @@ class LaneSegMetric(object):
         for n in range(N):
             for c in range(C):
                 pred_pc_x, pred_pc_y = torch.where(seg_pred[n, c] != 0)
-                if len(pred_pc_x) == 0:
+                label_pc_x, label_pc_y = torch.where(seg_label[n, c] != 0)
+                if len(pred_pc_x) == 0 and len(label_pc_x) == 0:
+                    continue
+
+                if len(pred_pc_x) == 0 or len(label_pc_x) == 0:
+                    CD[n, c] = threshold
                     continue
                 pred_pc_coords = torch.stack([pred_pc_x, pred_pc_y], -1).float()
-
-                label_pc_x, label_pc_y = torch.where(seg_label[n, c] != 0)
-                if len(label_pc_x) == 0:
-                    continue
                 label_pc_coords = torch.stack([label_pc_x, label_pc_y], -1).float()
-                CD[n, c] = self.chamfer_distance(pred_pc_coords[None], label_pc_coords[None], bidirectional=True)
+                CD[n, c] = self.chamfer_distance(pred_pc_coords[None], label_pc_coords[None], threshold=threshold, bidirectional=True)
+                CD[n, c] = CD[n, c] if CD[n, c] <= threshold else threshold
         dist = torch.mean(CD, 0)
         return dist
 

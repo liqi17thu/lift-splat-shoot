@@ -123,14 +123,16 @@ class BevEncode(nn.Module):
 
 
 class HDMapNet(nn.Module):
-    def __init__(self, xbound, ybound, outC, camC=64, instance_seg=True, embedded_dim=16, cam_encoding=True, bev_encoding=True):
+    def __init__(self, xbound, ybound, outC, camC=64, instance_seg=True, embedded_dim=16, cam_encoding=True, bev_encoding=True, z_roll_pitch=False):
         super(HDMapNet, self).__init__()
         self.xbound = xbound
         self.ybound = ybound
         self.camC = camC
         self.downsample = 16
-        self.ipm = IPM(xbound, ybound, N=6, C=camC, z_roll_pitch=True)
-        # self.ipm = IPM(xbound, ybound, N=6, C=camC, visual=True)
+        if cam_encoding:
+            self.ipm = IPM(xbound, ybound, N=6, C=camC, z_roll_pitch=z_roll_pitch)
+        else:
+            self.ipm = IPM(xbound, ybound, N=6, C=camC, visual=True, z_roll_pitch=z_roll_pitch)
         self.cam_encoding = cam_encoding
         if cam_encoding:
             self.camencode = CamEncode(camC)

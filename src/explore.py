@@ -13,7 +13,7 @@ import numpy as np
 import matplotlib as mpl
 import tqdm
 
-# mpl.use('Agg')
+mpl.use('Agg')
 
 from nuscenes import NuScenes
 from .topdown_mask import MyNuScenesMap
@@ -105,6 +105,7 @@ def viz_ipm_with_label(version,
             H=900, W=1600,
             resize_lim=(0.193, 0.225),
             final_dim=(128, 352),
+            # final_dim=(900, 1600),
             bot_pct_lim=(0.0, 0.22),
             rot_lim=(-5.4, 5.4),
             rand_flip=False,
@@ -112,6 +113,7 @@ def viz_ipm_with_label(version,
             line_width=5,
             preprocess=False,
             overwrite=False,
+            z_roll_pitch=False,
 
             xbound=[-30.0, 30.0, 0.15],
             ybound=[-15.0, 15.0, 0.15],
@@ -137,23 +139,23 @@ def viz_ipm_with_label(version,
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
                     'Ncams': ncams,
                 }
-
-    nusc = NuScenes(version='v1.0-{}'.format(version),
-                    dataroot=dataroot,
-                    verbose=False)
-    nusc_maps = {}
-    for map_name in MAP:
-        nusc_maps[map_name] = MyNuScenesMap(dataroot=dataroot, map_name=map_name)
-
     [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=4, nworkers=10,
                                           parser_name='segmentationdata', distributed=False)
 
-    ipm = HDMapNet(xbound, ybound, outC=3, cam_encoding=False, bev_encoding=False)
+    val = 0.01
+    fH, fW = final_dim
+    plt.figure(figsize=(3*fW*val, (3.5*fW + 2*fH)*val))
+    gs = mpl.gridspec.GridSpec(4, 3, height_ratios=(1.5*fW, 1.5*fW, fH, fH))
+    gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
+    ipm_with_pitch = HDMapNet(xbound, ybound, outC=3, cam_encoding=False, bev_encoding=False, z_roll_pitch=True)
+    ipm_without_pitch = HDMapNet(xbound, ybound, outC=3, cam_encoding=False, bev_encoding=False, z_roll_pitch=False)
+
+    # plt.figure(figsize=(4, 2))
     with torch.no_grad():
         for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(valloader):
-            topdown = ipm(imgs.cuda(),
+            topdown_with_pitch = ipm_with_pitch(imgs.cuda(),
                     rots.cuda(),
                     trans.cuda(),
                     intrins.cuda(),
@@ -163,10 +165,50 @@ def viz_ipm_with_label(version,
                     yaw_pitch_roll.cuda(),
                     )
 
-            topdown = denormalize_img(topdown)
+            topdown_without_pitch = ipm_without_pitch(imgs.cuda(),
+                    rots.cuda(),
+                    trans.cuda(),
+                    intrins.cuda(),
+                    post_rots.cuda(),
+                    post_trans.cuda(),
+                    translation.cuda(),
+                    yaw_pitch_roll.cuda(),
+                    )
+
+            binimgs[binimgs < 0.1] = np.nan
             for si in range(binimgs.shape[0]):
-                plt.imshow(topdown[si])
-                plt.imshow(inst_label[si], alpha=0.6)
+                plt.clf()
+                plt.axis('off')
+                ax = plt.subplot(gs[0, :])
+                ax.get_xaxis().set_ticks([])
+                ax.get_yaxis().set_ticks([])
+                plt.imshow(np.array(denormalize_img(topdown_with_pitch[si])))
+                plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.4)
+                plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.4)
+                plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.4)
+                plt.xlim((0, binimgs.shape[3]))
+                plt.ylim((0, binimgs.shape[2]))
+
+                ax = plt.subplot(gs[1, :])
+                ax.get_xaxis().set_ticks([])
+                ax.get_yaxis().set_ticks([])
+                plt.imshow(np.array(denormalize_img(topdown_without_pitch[si])))
+                plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.4)
+                plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.4)
+                plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.4)
+                plt.xlim((0, binimgs.shape[3]))
+                plt.ylim((0, binimgs.shape[2]))
+
+                for imgi, img in enumerate(imgs[si]):
+                    ax = plt.subplot(gs[2 + imgi // 3, imgi % 3])
+                    showimg = denormalize_img(img)
+                    # flip the bottom images
+                    if imgi > 2:
+                        showimg = showimg.transpose(Image.FLIP_LEFT_RIGHT)
+                    plt.imshow(showimg)
+                    plt.axis('off')
+
+                print(f'saving topdown_{batchi:06}_{si:03}.png')
                 plt.savefig(f'topdown_{batchi:06}_{si:03}.png')
 
 
@@ -363,6 +405,7 @@ def eval_model(version,
                 ybound=[-15.0, 15.0, 0.15],
                 zbound=[-10.0, 10.0, 20.0],
                 dbound=[4.0, 45.0, 1.0],
+                eval_mAP=False,
 
                 bsz=4,
                 nworkers=10,
@@ -410,7 +453,10 @@ def eval_model(version,
     embedded_loss_fn = DiscriminativeLoss(embedded_dim, delta_v, delta_d).cuda()
 
     model.eval()
-    val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, eval_mAP=True)
+    val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, eval_mAP=eval_mAP)
+    val_info['chamfer_distance'] *= 0.15
+    val_info['CD_pred (precision)'] *= 0.15
+    val_info['CD_label (recall)'] *= 0.15
     print(val_info)
     print('iou: ', end='')
     print(np.mean(val_info['iou'][1:]))
@@ -566,7 +612,7 @@ def viz_model_preds_class3(version,
                             final_dim=(128, 352),
                             bot_pct_lim=(0.0, 0.22),
                             rot_lim=(-5.4, 5.4),
-                            line_width=2,
+                            line_width=1,
                             rand_flip=True,
 
                             xbound=[-30.0, 30.0, 0.15],

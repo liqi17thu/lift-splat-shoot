@@ -60,6 +60,8 @@ def perspective(cam_coords, proj_mat, h, w):
 
     N, _, _ = pix_coords.shape
 
+    # pix_coords[:, 0] += 20.
+    # pix_coords = torch.stack([pix_coords[:, 2], pix_coords[:, 0]], axis=1)
     pix_coords = pix_coords[:, :2, :] / (pix_coords[:, 2, :][:, None, :] + eps)
     pix_coords = pix_coords.view(N, 2, h, w)
     pix_coords = pix_coords.permute(0, 2, 3, 1).contiguous()
@@ -229,16 +231,17 @@ class IPM(nn.Module):
         pts = vertices.reshape((-1, 1, 2))
         cv2.fillPoly(tri_mask, [pts], color=1.)
         self.tri_mask = torch.tensor(tri_mask[None, :, :, None]).cuda()
-        self.flipped_tri_mask = torch.flip(self.tri_mask, [2]).cuda()
+        self.flipped_tri_mask = torch.flip(self.tri_mask, [2]).cuda().bool()
+        self.tri_mask = self.tri_mask.bool()
 
     def mask_warped(self, warped_fv_images):
         warped_fv_images[:, CAM_F, :, :self.w//2, :] *= 0  # CAM_FRONT
-        warped_fv_images[:, CAM_FL] *= self.flipped_tri_mask.bool()  # CAM_FRONT_LEFT
+        warped_fv_images[:, CAM_FL] *= self.flipped_tri_mask  # CAM_FRONT_LEFT
         # warped_fv_images[:, CAM_FR] *= 1 - self.tri_mask.bool()  # CAM_FRONT_RIGHT
-        warped_fv_images[:, CAM_FR] *= ~ self.tri_mask.bool()  # CAM_FRONT_RIGHT
+        warped_fv_images[:, CAM_FR] *= ~ self.tri_mask  # CAM_FRONT_RIGHT
         warped_fv_images[:, CAM_B, :, self.w//2:, :] *= 0  # CAM_BACK
-        warped_fv_images[:, CAM_BL] *= self.tri_mask.bool()  # CAM_BACK_LEFT
-        warped_fv_images[:, CAM_BR] *= ~self.flipped_tri_mask.bool()  # CAM_BACK_RIGHT
+        warped_fv_images[:, CAM_BL] *= self.tri_mask  # CAM_BACK_LEFT
+        warped_fv_images[:, CAM_BR] *= ~self.flipped_tri_mask  # CAM_BACK_RIGHT
         return warped_fv_images
 
     def forward(self, images, Ks, RTs, translation, yaw_roll_pitch, post_RTs=None):

@@ -187,6 +187,9 @@ class NuscData(torch.utils.data.Dataset):
             post_tran[:2] = post_tran2
             post_rot[:2, :2] = post_rot2
 
+            points, depth, _ = self.nusc.explorer.map_pointcloud_to_image(rec['data']['LIDAR_TOP'], rec['data'][cam])
+            points, intensity, _ = self.nusc.explorer.map_pointcloud_to_image(rec['data']['LIDAR_TOP'], rec['data'][cam], render_intensity=True)
+
             # if self.is_train:
             #     img = color_jitter(img)
             img = normalize_img(img)
