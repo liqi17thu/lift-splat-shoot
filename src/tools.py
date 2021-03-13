@@ -706,3 +706,20 @@ def get_local_map(nmap, center, stretch, layer_names, line_names):
             polys[layer_name][rowi] = np.dot(polys[layer_name][rowi], rot)
 
     return polys
+
+def sort_points_by_dist(coords):
+    num_points = coords.shape[0]
+    dist_matrix = ((np.repeat(coords[:, None], num_points, 1) - coords) ** 2).sum(-1).astype('float')
+
+    sorted_points = [coords[0]]
+    sorted_indices = [0]
+    dist_matrix[:, 0] = np.inf
+
+    for i in range(num_points - 1):
+        idx = np.argmin(dist_matrix[sorted_indices]) % num_points
+        sorted_points.append(coords[idx])
+        sorted_indices.append(idx)
+        dist_matrix[:, idx] = np.inf
+
+    return np.stack(sorted_points, 0)
+
