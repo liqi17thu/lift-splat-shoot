@@ -191,7 +191,7 @@ class VITNet(nn.Module):
         x = x.view(B, N, self.camC, imH//self.downsample, imW//self.downsample)
         return x
 
-    def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
+    def forward(self, points, points_mask, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
         x = self.get_cam_feats(x)
         B, _, _, _, _ = x.shape
         x = torch.cat([torch.cat((x[:, 0], x[:, 1], x[:, 2]), -1), torch.cat((x[:, 3], x[:, 4], x[:, 5]), -1)], -2)
