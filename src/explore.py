@@ -7,6 +7,7 @@ import os
 import random
 import cv2
 
+import cv2
 import torch
 import torch.nn as nn
 import numpy as np
@@ -92,10 +93,11 @@ def gen_data(version,
             continue
 
         seg_mask, inst_mask = nusc_data.get_lineimg(rec)
-        seg_mask = label_onehot_decoding(seg_mask)
+        seg_mask = label_onehot_decoding(seg_mask).numpy()
+        seg_mask = cv2.medianBlur(seg_mask.astype('uint8') * 10, 3, cv2.BORDER_DEFAULT)
 
-        Image.fromarray(seg_mask.numpy().astype('uint8')).save(seg_path)
-        Image.fromarray(inst_mask.numpy().astype('uint8')).save(inst_path)
+        Image.fromarray(seg_mask * 10).save(seg_path)
+        Image.fromarray(inst_mask.numpy().astype('uint8') * 10).save(inst_path)
 
 
 
