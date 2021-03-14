@@ -441,6 +441,10 @@ def eval_model(version,
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
     elif method == 'VPN':
         model = VPNet(outC=outC)
+    elif method == 'PP':
+        model = PointPillar(outC, xbound, ybound, zbound, embedded_dim=16)
+    elif method == 'VPNPP':
+        model = VPNet(outC, instance_seg=True, embedded_dim=16, lidar=True, xbound=xbound, ybound=ybound, zbound=zbound)
 
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
