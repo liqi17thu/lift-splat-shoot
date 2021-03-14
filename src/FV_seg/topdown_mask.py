@@ -353,8 +353,8 @@ def main():
     MAP = ['boston-seaport', 'singapore-hollandvillage', 'singapore-onenorth', 'singapore-queenstown']
     CAM_POSITION = ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
 
-    overwrite = True
-    version = 'v1.0-mini'
+    overwrite = False
+    version = 'v1.0-trainval'
     dataroot = 'data/nuScenes'
     nuscene = NuScenes(version=version, dataroot=dataroot, verbose=False)
     nusc_maps = {}
