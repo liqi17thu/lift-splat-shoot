@@ -176,7 +176,7 @@ class HDMapNet(nn.Module):
 
         return Ks, RTs, post_RTs
 
-    def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
+    def forward(self, points, points_mask, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
         if self.cam_encoding:
             x = self.get_cam_feats(x)
 
@@ -229,7 +229,7 @@ class TemporalHDMapNet(HDMapNet):
         topdown = topdown.permute(0, 3, 1, 2).contiguous()
         return topdown
 
-    def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
+    def forward(self, points, points_mask, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
         x = self.get_cam_feats(x)
         B, T, N, C, h, w = x.shape
 

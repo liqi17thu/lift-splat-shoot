@@ -5,6 +5,7 @@ from .homography import bilinear_sampler
 from .tools import plane_grid_2d, get_rot_2d, cam_to_pixel
 from .spatial_gate import SpatialGate
 from .homography import IPM
+from .pointpillar import PointPillarEncoder
 
 from efficientnet_pytorch import EfficientNet
 from torchvision.models.resnet import resnet18
@@ -170,15 +171,15 @@ class ViewFusionModule(nn.Module):
 
 
 class VPNet(nn.Module):
-    def __init__(self, outC, camC=64, instance_seg=True, embedded_dim=16, extrinsic=False):
+    def __init__(self, outC, camC=64, instance_seg=True, embedded_dim=16, extrinsic=False, lidar=False, xbound=None, ybound=None, zbound=None):
         super(VPNet, self).__init__()
         self.camC = camC
         self.extrinsic = extrinsic
         self.downsample = 16
 
-        xbound = [-60, 60, 0.6]
-        ybound = [-30, 30, 0.6]
-        self.ipm = IPM(xbound, ybound, N=6, C=camC)
+        ipm_xbound = [-60, 60, 0.6]
+        ipm_ybound = [-30, 30, 0.6]
+        self.ipm = IPM(ipm_xbound, ipm_ybound, N=6, C=camC)
 
         self.camencode = CamEncode(camC)
         self.view_fusion = ViewFusionModule(fv_size=(8, 22), bv_size=(40, 80))
@@ -186,7 +187,13 @@ class VPNet(nn.Module):
             self.up_sampler = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         else:
             self.up_sampler = nn.Upsample(scale_factor=5, mode='bilinear', align_corners=True)
-        self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+        self.lidar = lidar
+        if lidar:
+            self.pp = PointPillarEncoder(128, xbound, ybound, zbound)
+            self.bevencode = BevEncode(inC=camC+128, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+        else:
+            self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+          
 
     def get_Ks_RTs_and_post_RTs(self, intrins, rots, trans, post_rots, post_trans):
         B, N, _, _ = intrins.shape
@@ -225,7 +232,7 @@ class VPNet(nn.Module):
         x = x.view(B, N, self.camC, imH//self.downsample, imW//self.downsample)
         return x
 
-    def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
+    def forward(self, points, points_mask, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
         x = self.get_cam_feats(x)
         x = self.view_fusion(x)
         if self.extrinsic:
@@ -234,6 +241,9 @@ class VPNet(nn.Module):
         else:
             topdown = x.mean(1)
         topdown = self.up_sampler(topdown)
+        if self.lidar:
+            lidar_feature = self.pp(points, points_mask)
+            topdown = torch.cat([topdown, lidar_feature], dim=1)
         return self.bevencode(topdown)
 
 
@@ -286,7 +296,7 @@ class TemporalVPNet(nn.Module):
         topdown = topdown.permute(0, 3, 1, 2).contiguous()
         return topdown
 
-    def forward(self, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
+    def forward(self, points, points_mask, x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
         x = self.get_cam_feats(x)
         B, T, N, C, h, w = x.shape
         x = x.view(B*T, N, C, h, w)

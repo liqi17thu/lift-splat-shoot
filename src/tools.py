@@ -507,12 +507,14 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
     loader = tqdm(valloader) if use_tqdm else valloader
     with torch.no_grad():
         for batch in loader:
-            allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask = batch
+            points, points_mask, allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask = batch
             binimgs = binimgs.cuda()
             inst_mask = inst_mask.cuda()
-            preds, embedded = model(allimgs.cuda(), rots.cuda(),
-                          trans.cuda(), intrins.cuda(), post_rots.cuda(),
-                          post_trans.cuda(), translation.cuda(), yaw_pitch_roll.cuda())
+            preds, embedded = model(
+                points.cuda(), points_mask.cuda(),
+                allimgs.cuda(), rots.cuda(),
+                trans.cuda(), intrins.cuda(), post_rots.cuda(),
+                post_trans.cuda(), translation.cuda(), yaw_pitch_roll.cuda())
             onehot_preds = onehot_encoding(preds, dim=1)
 
             # loss
