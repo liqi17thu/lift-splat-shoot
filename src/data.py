@@ -19,6 +19,7 @@ import torchvision
 from .topdown_mask import gen_topdown_mask, MyNuScenesMap, extract_contour
 from .tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx
 from .tools import random_erasing, label_onehot_encoding
+from .voxel import pad_or_trim_to_np
 
 MAP = ['boston-seaport', 'singapore-hollandvillage', 'singapore-onenorth', 'singapore-queenstown']
 ONE_CLASS = False
@@ -208,7 +209,8 @@ class NuscData(torch.utils.data.Dataset):
     def get_lidar_data(self, rec, nsweeps):
         pts = get_lidar_data(self.nusc, rec,
                        nsweeps=nsweeps, min_distance=2.2)
-        return torch.Tensor(pts)[:3]  # x,y,z
+        # return torch.Tensor(pts)# [:3]  # x,y,z
+        return pts
 
     def get_binimg(self, rec):
         egopose = self.nusc.get('ego_pose',
@@ -327,8 +329,13 @@ class SegmentationData(NuscData):
         cams = self.choose_cams()
         imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll = self.get_image_data(rec, cams)
         seg_mask, inst_mask = self.get_lineimg(rec)
-
-        return imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, seg_mask, inst_mask
+        lidar_data = self.get_lidar_data(rec, nsweeps=3)
+        lidar_data = lidar_data.transpose(1, 0)
+        num_points = lidar_data.shape[0]
+        lidar_data = pad_or_trim_to_np(lidar_data, [81920, 5]).astype('float32')
+        lidar_mask = np.ones(81920).astype('float32')
+        lidar_mask[num_points:] *= 0.0
+        return lidar_data, lidar_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, seg_mask, inst_mask
 
 
 class TemporalSegmentationData(NuscData):

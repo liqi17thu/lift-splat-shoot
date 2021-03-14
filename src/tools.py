@@ -507,12 +507,14 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
     loader = tqdm(valloader) if use_tqdm else valloader
     with torch.no_grad():
         for batch in loader:
-            allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask = batch
+            points, points_mask, allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask = batch
             binimgs = binimgs.cuda()
             inst_mask = inst_mask.cuda()
-            preds, embedded = model(allimgs.cuda(), rots.cuda(),
-                          trans.cuda(), intrins.cuda(), post_rots.cuda(),
-                          post_trans.cuda(), translation.cuda(), yaw_pitch_roll.cuda())
+            preds, embedded = model(
+                points.cuda(), points_mask.cuda(),
+                allimgs.cuda(), rots.cuda(),
+                trans.cuda(), intrins.cuda(), post_rots.cuda(),
+                post_trans.cuda(), translation.cuda(), yaw_pitch_roll.cuda())
             onehot_preds = onehot_encoding(preds, dim=1)
 
             # loss
@@ -631,7 +633,7 @@ def get_nusc_maps(map_folder):
     return nusc_maps
 
 
-def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx):
+def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx, alpha_poly=0.2, alpha_line=0.5):
     egopose = nusc.get('ego_pose', nusc.get('sample_data', rec['data']['LIDAR_TOP'])['ego_pose_token'])
     map_name = scene2map[nusc.get('scene', rec['scene_token'])['name']]
 
@@ -639,20 +641,32 @@ def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx):
     rot = np.arctan2(rot[1, 0], rot[0, 0])
     center = np.array([egopose['translation'][0], egopose['translation'][1], np.cos(rot), np.sin(rot)])
 
-    poly_names = ['road_segment', 'lane']
+    poly_names = ['road_segment', 'lane', 'ped_crossing']
     line_names = ['road_divider', 'lane_divider']
     lmap = get_local_map(nusc_maps[map_name], center,
                          50.0, poly_names, line_names)
-    for name in poly_names:
-        for la in lmap[name]:
-            pts = (la - bx) / dx
-            plt.fill(pts[:, 0], pts[:, 1], c=(1.00, 0.50, 0.31), alpha=0.2)
-    for la in lmap['road_divider']:
+
+    # for name in ['road_segment', 'lane']:
+    #     for la in lmap[name]:
+    #         pts = (la - bx) / dx
+    #         plt.fill(pts[:, 0], pts[:, 1], c=(1.00, 0.50, 0.31), alpha=0.2)
+
+
+    for la in lmap['road_segment']:
         pts = (la - bx) / dx
-        plt.plot(pts[:, 0], pts[:, 1], c=(0.0, 0.0, 1.0), alpha=0.5)
+        plt.fill(pts[:, 0], pts[:, 1], c=(124./255., 179./255., 210./255.), alpha=alpha_poly)
+    for la in lmap['lane']:
+        pts = (la - bx) / dx
+        plt.fill(pts[:, 0], pts[:, 1], c=(74./255., 163./255., 120./255.), alpha=alpha_poly)
+    for la in lmap['ped_crossing']:
+        pts = (la - bx) / dx
+        plt.plot(pts[:, 0], pts[:, 1], c=(247./255., 129./255., 132./255.), alpha=alpha_poly)
     for la in lmap['lane_divider']:
         pts = (la - bx) / dx
-        plt.plot(pts[:, 0], pts[:, 1], c=(159. / 255., 0.0, 1.0), alpha=0.5)
+        plt.plot(pts[:, 0], pts[:, 1], c=(159. / 255., 0.0, 1.0), alpha=alpha_line)
+    for la in lmap['road_divider']:
+        pts = (la - bx) / dx
+        plt.plot(pts[:, 0], pts[:, 1], c=(0.0, 0.0, 1.0), alpha=alpha_line)
 
 
 def get_local_map(nmap, center, stretch, layer_names, line_names):
@@ -706,3 +720,20 @@ def get_local_map(nmap, center, stretch, layer_names, line_names):
             polys[layer_name][rowi] = np.dot(polys[layer_name][rowi], rot)
 
     return polys
+
+def sort_points_by_dist(coords):
+    num_points = coords.shape[0]
+    dist_matrix = ((np.repeat(coords[:, None], num_points, 1) - coords) ** 2).sum(-1).astype('float')
+
+    sorted_points = [coords[0]]
+    sorted_indices = [0]
+    dist_matrix[:, 0] = np.inf
+
+    for i in range(num_points - 1):
+        idx = np.argmin(dist_matrix[sorted_indices]) % num_points
+        sorted_points.append(coords[idx])
+        sorted_indices.append(idx)
+        dist_matrix[:, idx] = np.inf
+
+    return np.stack(sorted_points, 0)
+

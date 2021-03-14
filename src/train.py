@@ -21,6 +21,7 @@ from .tools import FocalLoss, SimpleLoss, DiscriminativeLoss
 from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet, TemporalVPNet
 from .vit_model import VITNet
+from .pointpillar import PointPillar
 
 
 import argparse
@@ -50,7 +51,7 @@ def write_log(writer, ious, acces, precs, recalls, title, counter):
 
 
 def train(version='mini',
-          dataroot='data/nuScenes',
+          dataroot='/mnt/datasets/nuScenes',
           nepochs=30,
           gpuid=0,
           outC=4,
@@ -132,6 +133,10 @@ def train(version='mini',
         model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'VIT':
         model = VITNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+    elif method == 'PP':
+        model = PointPillar(outC, xbound, ybound, zbound, embedded_dim=embedded_dim)
+    elif method == 'VPNPP':
+        model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim, lidar=True, xbound=xbound, ybound=ybound, zbound=zbound)
     else:
         raise NotImplementedError
 
@@ -165,10 +170,12 @@ def train(version='mini',
             val_sampler.set_epoch(epoch)
 
         np.random.seed()
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask) in enumerate(trainloader):
+        for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask) in enumerate(trainloader):
             t0 = time()
             opt.zero_grad()
-            preds, embedded = model(imgs.cuda(),
+            preds, embedded = model(points.cuda(),
+                                    points_mask.cuda(),
+                                    imgs.cuda(),
                                     rots.cuda(),
                                     trans.cuda(),
                                     intrins.cuda(),

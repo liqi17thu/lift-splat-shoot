@@ -33,9 +33,10 @@ from .models import compile_model
 from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet
 from .postprocess import LaneNetPostProcessor
+from .pointpillar import PointPillar
 from .metric import LaneSegMetric
 
-from .tools import denormalize_img
+from .tools import denormalize_img, sort_points_by_dist
 
 def gen_data(version,
             dataroot='data/nuScenes',
@@ -429,7 +430,7 @@ def eval_model(version,
                     'bot_pct_lim': bot_pct_lim,
                     'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
-                    'Ncams': 5,
+                    'Ncams': 6,
                 }
     [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
@@ -443,6 +444,10 @@ def eval_model(version,
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
     elif method == 'VPN':
         model = VPNet(outC=outC)
+    elif method == 'PP':
+        model = PointPillar(outC, xbound, ybound, zbound)
+    elif method == 'VPNPP':
+        model = VPNet(outC, lidar=True, xbound=xbound, ybound=ybound, zbound=zbound)
 
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
@@ -576,7 +581,7 @@ def viz_model_preds(version,
                 ax = plt.subplot(gs[0, :])
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
-                plt.setp(ax.spines.values(), color='b', linewidth=2)
+                # plt.setp(ax.spines.values(), color='b', linewidth=2)
                 # plt.legend(handles=[
                 #     mpatches.Patch(color=(0.0, 0.0, 1.0, 1.0), label='Output Vehicle Segmentation'),
                 #     mpatches.Patch(color='#76b900', label='Ego Vehicle'),
@@ -721,7 +726,7 @@ def viz_model_preds_class3(version,
                 ax = plt.subplot(gs[0, :])
                 # ax.get_xaxis().set_ticks([])
                 # ax.get_yaxis().set_ticks([])
-                plt.setp(ax.spines.values(), color='b', linewidth=2)
+                # plt.setp(ax.spines.values(), color='b', linewidth=2)
                 # plt.legend(handles=[
                 #     mpatches.Patch(color=(0.0, 0.0, 1.0, 1.0), label='Output Vehicle Segmentation'),
                 #     mpatches.Patch(color='#76b900', label='Ego Vehicle'),
@@ -822,6 +827,12 @@ def viz_model_preds_inst(version,
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
     elif method == 'VPN':
         model = VPNet(outC=outC)
+    elif method == 'PP':
+        model = PointPillar(outC, xbound, ybound, zbound)
+    elif method == 'VPNPP':
+        model = VPNet(outC, lidar=True, xbound=xbound, ybound=ybound, zbound=zbound)
+    else:
+        raise NotImplementedError
 
     model.load_state_dict(torch.load(modelf))
     model.to(device)
@@ -837,10 +848,11 @@ def viz_model_preds_inst(version,
     val = 0.01
     fH, fW = final_dim
     plt.figure(figsize=(3*fW*val, (4.5*fW + 2*fH)*val))
-    gs = mpl.gridspec.GridSpec(5, 3, height_ratios=(1.5*fW, 1.5*fW, 1.5*fW, fH, fH))
+    # gs = mpl.gridspec.GridSpec(5, 3, height_ratios=(1.5*fW, 1.5*fW, 1.5*fW, fH, fH))
+    gs = mpl.gridspec.GridSpec(5, 3, height_ratios=(fH, fH, 1.5*fW, 1.5*fW, 1.5*fW))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
-    max_pool = nn.MaxPool2d(3, padding=1, stride=1)
+    max_pool = nn.MaxPool2d(7, padding=3, stride=1)
     post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
     pca = PCA(n_components=3)
 
@@ -848,10 +860,13 @@ def viz_model_preds_inst(version,
     for i in range(30):
         color_map.append([random.randint(0, 256), random.randint(0, 256), random.randint(0, 256)])
 
+    car_img = Image.open('car_3.png')
     model.eval()
-    counter = 0
+    counter = 44
     with torch.no_grad():
         for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(loader):
+            if batchi < 11:
+                continue
             out, embedded = model(imgs.to(device),
                     rots.to(device),
                     trans.to(device),
@@ -861,7 +876,10 @@ def viz_model_preds_inst(version,
                     translation.to(device),
                     yaw_pitch_roll.to(device),
                     )
+            origin_out = out
             out = out.softmax(1).cpu()
+            pred_prob_mask = 1 - out[:, 0]
+
             preds = onehot_encoding(out).cpu().numpy()
             embedded = embedded.cpu()
             inst_label = inst_label.sum(1)
@@ -871,6 +889,8 @@ def viz_model_preds_inst(version,
             embedded_fitted = pca.fit_transform(embedded_test)
             embedded_fitted = torch.sigmoid(torch.tensor(embedded_fitted)).numpy()
             embedded_fitted = embedded_fitted.reshape((N, H, W, 3))
+            alpha_channel = np.ones((N, H, W, 1))
+            embedded_fitted = np.concatenate([embedded_fitted, alpha_channel], axis=-1)
 
             if temporal:
                 imgs = imgs[:, 0]
@@ -881,21 +901,21 @@ def viz_model_preds_inst(version,
             for si in range(imgs.shape[0]):
                 plt.clf()
                 for imgi, img in enumerate(imgs[si]):
-                    ax = plt.subplot(gs[3 + imgi // 3, imgi % 3])
+                    ax = plt.subplot(gs[imgi // 3, imgi % 3])
                     showimg = denormalize_img(img)
                     # flip the bottom images
                     if imgi > 2:
                         showimg = showimg.transpose(Image.FLIP_LEFT_RIGHT)
                     plt.imshow(showimg)
                     plt.axis('off')
-                    plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.92), xycoords='axes fraction')
+                    plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.0), xycoords='axes fraction')
 
                 inst_mask = np.zeros((200, 400), dtype='int32')
                 inst_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
 
                 simplified_coords = []
-                simplified_mask = np.zeros((200, 400), dtype='int32')
-                simplified_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
+                # simplified_mask = np.zeros((200, 400), dtype='int32')
+                # simplified_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
 
                 count = 0
                 for i in range(1, preds.shape[1]):
@@ -907,27 +927,35 @@ def viz_model_preds_inst(version,
 
                     num_inst = len(single_class_inst_coords)
 
-                    prob = out[si][i]
+                    prob = origin_out[si][i]
                     prob[single_class_inst_mask == 0] = 0
                     max_pooled = max_pool(prob.unsqueeze(0))[0]
-                    nms_mask = ((max_pooled - prob) < 1e-6).numpy()
+                    nms_mask = ((max_pooled - prob) < 1e-6).cpu().numpy()
 
                     for j in range(1, num_inst+1):
                         idx = np.where(nms_mask & (single_class_inst_mask == j))
-                        # idx = np.where((single_class_inst_mask == j))
+                        full_idx = np.where((single_class_inst_mask == j))
                         if len(idx[0]) == 0:
                             continue
 
                         lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
+                        full_lane_coord = np.vstack((full_idx[1], full_idx[0])).transpose()
 
                         range_0 = np.max(lane_coordinate[:, 0]) - np.min(lane_coordinate[:, 0])
                         range_1 = np.max(lane_coordinate[:, 1]) - np.min(lane_coordinate[:, 1])
                         if range_0 > range_1:
-                            lane_coordinate = np.stack(sorted(lane_coordinate, key=lambda x: x[0]))
+                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[0])
+                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[0])
                         else:
-                            lane_coordinate = np.stack(sorted(lane_coordinate, key=lambda x: x[1]))
+                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[1])
+                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[1])
+
+                        lane_coordinate.insert(0, full_lane_coord[0])
+                        lane_coordinate.insert(-1, full_lane_coord[-1])
+                        lane_coordinate = np.stack(lane_coordinate)
+                        lane_coordinate = sort_points_by_dist(lane_coordinate)
                         simplified_coords.append(lane_coordinate)
-                        simplified_mask = cv2.polylines(simplified_mask, [lane_coordinate], False, color=count+j, thickness=1)
+                        # simplified_mask = cv2.polylines(simplified_mask, [lane_coordinate], False, color=count+j, thickness=1)
 
                     inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
                     count += num_inst
@@ -936,50 +964,69 @@ def viz_model_preds_inst(version,
                     inst_mask_pil[inst_mask == i, :3] = color_map[i]
                     inst_mask_pil[inst_mask == i, 3] = 150
 
-                for i in range(1, count+1):
-                    simplified_mask_pil[simplified_mask == i, :3] = color_map[-i]
-                    simplified_mask_pil[simplified_mask == i, 3] = 255
-
-                ax = plt.subplot(gs[0, :])
-                ax.get_xaxis().set_ticks([])
-                ax.get_yaxis().set_ticks([])
-                embedded_fitted[si][inst_label[si] == 0] = 0
-                plt.imshow(embedded_fitted[si])
-                plt.xlim((0, binimgs.shape[3]))
-                plt.ylim((0, binimgs.shape[2]))
-                add_ego(bx, dx)
-
-                ax = plt.subplot(gs[1, :])
-                ax.get_xaxis().set_ticks([])
-                ax.get_yaxis().set_ticks([])
-                plt.imshow(inst_mask_pil)
-                plt.imshow(simplified_mask_pil)
-                plt.xlim((0, binimgs.shape[3]))
-                plt.ylim((0, binimgs.shape[2]))
-                add_ego(bx, dx)
-
+                # for i in range(1, count+1):
+                #     simplified_mask_pil[simplified_mask == i, :3] = color_map[-i]
+                #     simplified_mask_pil[simplified_mask == i, 3] = 255
 
                 ax = plt.subplot(gs[2, :])
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
-                plt.setp(ax.spines.values(), color='b', linewidth=2)
+                # plt.setp(ax.spines.values(), color='b', linewidth=2)
+
+                plt.legend(handles=[
+                    # mpatches.Patch(color=(0.4, 0, 0, 0.6), label='Border'),
+                    # mpatches.Patch(color=(0, 0.4, 0, 0.6), label='Divider'),
+                    # mpatches.Patch(color=(0, 0, 0.4, 0.6), label='Ped Crossing'),
+                    mpatches.Patch(color='#709178', label='Border'),
+                    mpatches.Patch(color='#708fa7', label='Divider'),
+                    mpatches.Patch(color='#9f7883', label='Ped Crossing'),
+                ], loc=(0.01, 0.80), prop={'size': 15})
+
                 plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
-                plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-                plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-                plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
                 plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
                 plt.xlim((0, binimgs.shape[3]))
                 plt.ylim((0, binimgs.shape[2]))
-                add_ego(bx, dx)
+                # plt.setp(ax.spines.values(), color='b', linewidth=2)
+                # add_ego(bx, dx)
+                plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
 
+                ax = plt.subplot(gs[3, :])
+                ax.get_xaxis().set_ticks([])
+                ax.get_yaxis().set_ticks([])
+                # plt.setp(ax.spines.values(), color='b', linewidth=2)
+                embedded_fitted[si, ..., 3] = pred_prob_mask[si]
+                plt.imshow(embedded_fitted[si])
+                plt.xlim((0, binimgs.shape[3]))
+                plt.ylim((0, binimgs.shape[2]))
+                # add_ego(bx, dx)
+                plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
+                plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
+
+                ax = plt.subplot(gs[4, :])
+                ax.get_xaxis().set_ticks([])
+                ax.get_yaxis().set_ticks([])
+                # plt.setp(ax.spines.values(), color='b', linewidth=2)
+                # plt.imshow(inst_mask_pil)
+                # plt.imshow(simplified_mask_pil)
+                for coord in simplified_coords:
+                    plt.plot(coord[:, 0], coord[:, 1])
+
+                plt.xlim((0, binimgs.shape[3]))
+                plt.ylim((0, binimgs.shape[2]))
+                plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
+                # add_ego(bx, dx)
 
                 imname = f'eval{batchi:06}_{si:03}.jpg'
                 print('saving', imname)
                 plt.savefig(imname)
+                # plt.savefig(imname, dpi=800)
                 counter += 1
