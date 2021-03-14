@@ -333,7 +333,7 @@ def get_fv_mask(nuscene, nusc_maps, sample_record, pos, image_size=(1600, 900)):
     line_mask = get_map_line_mask_in_image(nuscene, nusc_maps[location], sample_data_record, image_size,
                                            layer_names=['lane_divider', 'road_divider', 'ped_crossing'])
 
-    final_mask = np.zeros((4, image_size[1], image_size[0]))
+    final_mask = np.zeros((4, image_size[1], image_size[0]), dtype='uint8')
 
     contour_mask = extract_contour(poly_mask[1:].any(0).astype('uint8'), (image_size[1], image_size[0]))
     final_mask[1] = line_mask[:2].any(0)
@@ -361,7 +361,6 @@ def main():
     for map_name in MAP:
         nusc_maps[map_name] = NuScenesMap(dataroot=dataroot, map_name=map_name)
 
-    total = len(nuscene.sample)
     random.shuffle(nuscene.sample)
     for sample_record in tqdm.tqdm(nuscene.sample):
         for pos in CAM_POSITION:
@@ -370,14 +369,14 @@ def main():
             image = Image.open(path).convert('RGB')
             image_size = image.size
 
-            seg_mask_path = path.split('.')[0] + '_mask.png'
+            seg_mask_path = path.split('.')[0] + '_line_mask.png'
             if not overwrite and os.path.exists(seg_mask_path):
                 continue
 
             final_mask = get_fv_mask(nuscene, nusc_maps, sample_record, pos, image_size=image_size)
             for i in range(len(final_mask)):
                 final_mask[i] *= i
-            final_mask = final_mask.sum(0)
+            final_mask = final_mask.max(0)
             final_mask = mask_label_to_img(final_mask)
             final_mask.save(seg_mask_path, 'PNG')
 

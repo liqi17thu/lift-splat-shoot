@@ -113,9 +113,8 @@ class CrossViewSegDataset(Dataset):
         image = np.array(Image.open(path).convert('RGB'))
         mask = get_fv_mask(self.nuscene, self.nusc_maps, sample_record, pos)
         if self.transforms:
-            sample = self.sample_transforms(image=image, mask=mask)
+            sample = self.transforms(image=image, mask=mask)
             image, mask = sample['image'], sample['mask']
-
         return {'image': image, 'mask': mask}
 
 
@@ -176,7 +175,7 @@ def get_cv_loaders(
         dataroot: str = 'data/nuImages',
         version: str = 'mini',
         batch_size: int = 32,
-        num_workers: int = 16,
+        num_workers: int = 10,
         train_transforms_fn=None,
         valid_transforms_fn=None):
 

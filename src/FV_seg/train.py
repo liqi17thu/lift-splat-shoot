@@ -10,7 +10,7 @@ from catalyst.dl import DiceCallback, IouCallback, CriterionCallback, MetricAggr
 from catalyst.contrib.callbacks import DrawMasksCallback
 import segmentation_models_pytorch as smp
 
-from .dataset import get_loaders
+from .dataset import get_loaders, get_cv_loaders
 from .transform import resize_transforms, hard_transforms, post_transforms, compose, pre_transforms
 
 parser = argparse.ArgumentParser(description='First-View Segmentation')
@@ -25,7 +25,7 @@ parser.add_argument('--encoder-lr', default=0.0005, type=float)
 parser.add_argument('--encoder-wd', default=0.00003, type=float)
 
 
-parser.add_argument('--bs', default=64, type=int)
+parser.add_argument('--bs', default=32, type=int)
 parser.add_argument('--epochs', default=20, type=int)
 parser.add_argument('--logdir', default='./logs/segmentation', type=str)
 
@@ -44,7 +44,7 @@ def main():
 
     valid_transforms = compose([pre_transforms(), post_transforms()])
 
-    loaders = get_loaders(
+    loaders = get_cv_loaders(
         dataroot=args.dataroot,
         version=args.version,
         train_transforms_fn=train_transforms,
@@ -53,7 +53,7 @@ def main():
     )
 
     # We will use Feature Pyramid Network with pre-trained ResNeXt50 backbone
-    model = smp.FPN(encoder_name="resnext50_32x4d", classes=1)
+    model = smp.FPN(encoder_name="resnext50_32x4d", classes=4)
 
     # we have multiple criterions
     criterion = {
