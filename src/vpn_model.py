@@ -193,7 +193,7 @@ class VPNet(nn.Module):
             self.bevencode = BevEncode(inC=camC+128, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
         else:
             self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
-          
+
 
     def get_Ks_RTs_and_post_RTs(self, intrins, rots, trans, post_rots, post_trans):
         B, N, _, _ = intrins.shape

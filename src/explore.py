@@ -32,6 +32,7 @@ from .models import compile_model
 from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet
 from .postprocess import LaneNetPostProcessor
+from .pointpillar import PointPillar
 from .metric import LaneSegMetric
 
 from .tools import denormalize_img, sort_points_by_dist
@@ -427,7 +428,7 @@ def eval_model(version,
                     'bot_pct_lim': bot_pct_lim,
                     'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
-                    'Ncams': 5,
+                    'Ncams': 6,
                 }
     [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
@@ -441,6 +442,10 @@ def eval_model(version,
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
     elif method == 'VPN':
         model = VPNet(outC=outC)
+    elif method == 'PP':
+        model = PointPillar(outC, xbound, ybound, zbound)
+    elif method == 'VPNPP':
+        model = VPNet(outC, lidar=True, xbound=xbound, ybound=ybound, zbound=zbound)
 
     print('loading', modelf)
     model.load_state_dict(torch.load(modelf))
@@ -820,6 +825,12 @@ def viz_model_preds_inst(version,
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
     elif method == 'VPN':
         model = VPNet(outC=outC)
+    elif method == 'PP':
+        model = PointPillar(outC, xbound, ybound, zbound)
+    elif method == 'VPNPP':
+        model = VPNet(outC, lidar=True, xbound=xbound, ybound=ybound, zbound=zbound)
+    else:
+        raise NotImplementedError
 
     model.load_state_dict(torch.load(modelf))
     model.to(device)
