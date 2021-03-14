@@ -172,6 +172,58 @@ class FirstViewSegDataset(Dataset):
 
         return {'image': image, 'mask': mask}
 
+def get_cv_loaders(
+        dataroot: str = 'data/nuImages',
+        version: str = 'mini',
+        batch_size: int = 32,
+        num_workers: int = 16,
+        train_transforms_fn=None,
+        valid_transforms_fn=None):
+
+    if version == 'mini':
+        train_version = 'v1.0-mini'
+        val_version = 'v1.0-mini'
+    else:
+        train_version = 'v1.0-trainval-train'
+        val_version = 'v1.0-trainval-val'
+
+    # Creates our train dataset
+    train_dataset = CrossViewSegDataset(
+        dataroot=dataroot,
+        version=train_version,
+        transforms=train_transforms_fn
+    )
+
+    # Creates our valid dataset
+    valid_dataset = CrossViewSegDataset(
+        dataroot=dataroot,
+        version=val_version,
+        transforms=valid_transforms_fn
+    )
+
+    # Catalyst uses normal torch.data.DataLoader
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        drop_last=True,
+    )
+
+    valid_loader = DataLoader(
+        valid_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        drop_last=True,
+    )
+
+    loaders = collections.OrderedDict()
+    loaders["train"] = train_loader
+    loaders["valid"] = valid_loader
+
+    return loaders
+
 
 def get_loaders(
         dataroot: str = 'data/nuImages',
