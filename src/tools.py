@@ -631,7 +631,7 @@ def get_nusc_maps(map_folder):
     return nusc_maps
 
 
-def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx):
+def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx, alpha_poly=0.2, alpha_line=0.5):
     egopose = nusc.get('ego_pose', nusc.get('sample_data', rec['data']['LIDAR_TOP'])['ego_pose_token'])
     map_name = scene2map[nusc.get('scene', rec['scene_token'])['name']]
 
@@ -639,20 +639,32 @@ def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx):
     rot = np.arctan2(rot[1, 0], rot[0, 0])
     center = np.array([egopose['translation'][0], egopose['translation'][1], np.cos(rot), np.sin(rot)])
 
-    poly_names = ['road_segment', 'lane']
+    poly_names = ['road_segment', 'lane', 'ped_crossing']
     line_names = ['road_divider', 'lane_divider']
     lmap = get_local_map(nusc_maps[map_name], center,
                          50.0, poly_names, line_names)
-    for name in poly_names:
-        for la in lmap[name]:
-            pts = (la - bx) / dx
-            plt.fill(pts[:, 0], pts[:, 1], c=(1.00, 0.50, 0.31), alpha=0.2)
-    for la in lmap['road_divider']:
+
+    # for name in ['road_segment', 'lane']:
+    #     for la in lmap[name]:
+    #         pts = (la - bx) / dx
+    #         plt.fill(pts[:, 0], pts[:, 1], c=(1.00, 0.50, 0.31), alpha=0.2)
+
+
+    for la in lmap['road_segment']:
         pts = (la - bx) / dx
-        plt.plot(pts[:, 0], pts[:, 1], c=(0.0, 0.0, 1.0), alpha=0.5)
+        plt.fill(pts[:, 0], pts[:, 1], c=(124./255., 179./255., 210./255.), alpha=alpha_poly)
+    for la in lmap['lane']:
+        pts = (la - bx) / dx
+        plt.fill(pts[:, 0], pts[:, 1], c=(74./255., 163./255., 120./255.), alpha=alpha_poly)
+    for la in lmap['ped_crossing']:
+        pts = (la - bx) / dx
+        plt.plot(pts[:, 0], pts[:, 1], c=(247./255., 129./255., 132./255.), alpha=alpha_poly)
     for la in lmap['lane_divider']:
         pts = (la - bx) / dx
-        plt.plot(pts[:, 0], pts[:, 1], c=(159. / 255., 0.0, 1.0), alpha=0.5)
+        plt.plot(pts[:, 0], pts[:, 1], c=(159. / 255., 0.0, 1.0), alpha=alpha_line)
+    for la in lmap['road_divider']:
+        pts = (la - bx) / dx
+        plt.plot(pts[:, 0], pts[:, 1], c=(0.0, 0.0, 1.0), alpha=alpha_line)
 
 
 def get_local_map(nmap, center, stretch, layer_names, line_names):
