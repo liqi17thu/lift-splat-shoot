@@ -22,6 +22,7 @@ from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet, TemporalVPNet
 from .vit_model import VITNet
 from .pointpillar import PointPillar
+from .ori_vpn import VPNModel
 
 
 import argparse
@@ -137,6 +138,8 @@ def train(version='mini',
         model = PointPillar(outC, xbound, ybound, zbound, embedded_dim=embedded_dim)
     elif method == 'VPNPP':
         model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim, lidar=True, xbound=xbound, ybound=ybound, zbound=zbound)
+    elif method == 'ori_VPN':
+        model = VPNModel(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     else:
         raise NotImplementedError
 
