@@ -148,6 +148,7 @@ def viz_ipm_with_label(version,
 
     val = 0.01
     fH, fW = final_dim
+    fH, fW = 1, 2
     plt.figure(figsize=(3*fW*val, (3.5*fW + 2*fH)*val))
     gs = mpl.gridspec.GridSpec(4, 3, height_ratios=(1.5*fW, 1.5*fW, fH, fH))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
@@ -771,6 +772,7 @@ def viz_model_preds_inst(version,
                             H=900, W=1600,
                             resize_lim=(0.193, 0.225),
                             final_dim=(128, 352),
+                            # final_dim=(300, 400),
                             bot_pct_lim=(0.0, 0.22),
                             rot_lim=(-5.4, 5.4),
                             line_width=2,
@@ -847,12 +849,16 @@ def viz_model_preds_inst(version,
 
     val = 0.01
     fH, fW = final_dim
-    plt.figure(figsize=(3*fW*val, (4.5*fW + 2*fH)*val))
-    # gs = mpl.gridspec.GridSpec(5, 3, height_ratios=(1.5*fW, 1.5*fW, 1.5*fW, fH, fH))
-    gs = mpl.gridspec.GridSpec(5, 3, height_ratios=(fH, fH, 1.5*fW, 1.5*fW, 1.5*fW))
+    # fH, fW = 300, 400
+    # plt.figure(figsize=(3*fW*val, (4.5*fW + 2*fH)*val))
+    # gs = mpl.gridspec.GridSpec(5, 3, height_ratios=(fH, fH, 1.5*fW, 1.5*fW, 1.5*fW))
+    plt.figure(figsize=(3*fW*val, (3*fW)*val))
+    gs = mpl.gridspec.GridSpec(2, 3, height_ratios=(1.5*fW, 1.5*fW))
+    # plt.figure(figsize=(3*fW*val, (1.5*fW + 2*fH)*val))
+    # gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(fH, fH, 1.5*fW))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
-    max_pool = nn.MaxPool2d(7, padding=3, stride=1)
+    max_pool = nn.MaxPool2d(3, padding=1, stride=1)
     post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
     pca = PCA(n_components=3)
 
@@ -864,10 +870,41 @@ def viz_model_preds_inst(version,
     model.eval()
     counter = 44
     with torch.no_grad():
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(loader):
+        for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(loader):
             if batchi < 11:
                 continue
-            out, embedded = model(imgs.to(device),
+
+            # for si in range(imgs.shape[0]):
+            #     plt.clf()
+            #     for imgi, img in enumerate(imgs[si]):
+            #         ax = plt.subplot(gs[imgi // 3, imgi % 3])
+            #         showimg = denormalize_img(img)
+            #         # flip the bottom images
+            #         if imgi > 2:
+            #             showimg = showimg.transpose(Image.FLIP_LEFT_RIGHT)
+            #         plt.imshow(showimg)
+            #         plt.axis('off')
+            #         plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.05), xycoords='axes fraction', color='white')
+
+            #     ax = plt.subplot(gs[2, :])
+            #     ax.get_xaxis().set_ticks([])
+            #     ax.get_yaxis().set_ticks([])
+            #     rec = loader.dataset.ixes[counter]
+            #     plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
+            #     plt.xlim((0, binimgs.shape[3]))
+            #     plt.ylim((0, binimgs.shape[2]))
+
+            #     imname = f'gt{batchi:06}_{si:03}.jpg'
+            #     print('saving', imname)
+            #     plt.savefig(imname)
+            #     # plt.savefig(imname, dpi=800)
+            #     counter += 1
+            # continue
+
+            out, embedded = model(
+                    points.cuda(),
+                    points_mask.cuda(),
+                    imgs.to(device),
                     rots.to(device),
                     trans.to(device),
                     intrins.to(device),
@@ -900,15 +937,15 @@ def viz_model_preds_inst(version,
             seg_mask[seg_mask < 0.1] = np.nan
             for si in range(imgs.shape[0]):
                 plt.clf()
-                for imgi, img in enumerate(imgs[si]):
-                    ax = plt.subplot(gs[imgi // 3, imgi % 3])
-                    showimg = denormalize_img(img)
-                    # flip the bottom images
-                    if imgi > 2:
-                        showimg = showimg.transpose(Image.FLIP_LEFT_RIGHT)
-                    plt.imshow(showimg)
-                    plt.axis('off')
-                    plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.0), xycoords='axes fraction')
+                # for imgi, img in enumerate(imgs[si]):
+                #     ax = plt.subplot(gs[imgi // 3, imgi % 3])
+                #     showimg = denormalize_img(img)
+                #     # flip the bottom images
+                #     if imgi > 2:
+                #         showimg = showimg.transpose(Image.FLIP_LEFT_RIGHT)
+                #     plt.imshow(showimg)
+                #     plt.axis('off')
+                #     plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.05), xycoords='axes fraction', color='white')
 
                 inst_mask = np.zeros((200, 400), dtype='int32')
                 inst_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
@@ -968,7 +1005,7 @@ def viz_model_preds_inst(version,
                 #     simplified_mask_pil[simplified_mask == i, :3] = color_map[-i]
                 #     simplified_mask_pil[simplified_mask == i, 3] = 255
 
-                ax = plt.subplot(gs[2, :])
+                ax = plt.subplot(gs[0, :])
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
                 # plt.setp(ax.spines.values(), color='b', linewidth=2)
@@ -977,8 +1014,8 @@ def viz_model_preds_inst(version,
                     # mpatches.Patch(color=(0.4, 0, 0, 0.6), label='Border'),
                     # mpatches.Patch(color=(0, 0.4, 0, 0.6), label='Divider'),
                     # mpatches.Patch(color=(0, 0, 0.4, 0.6), label='Ped Crossing'),
-                    mpatches.Patch(color='#709178', label='Border'),
-                    mpatches.Patch(color='#708fa7', label='Divider'),
+                    mpatches.Patch(color='#709178', label='Road Boundary'),
+                    mpatches.Patch(color='#708fa7', label='Road Divider'),
                     mpatches.Patch(color='#9f7883', label='Ped Crossing'),
                 ], loc=(0.01, 0.80), prop={'size': 15})
 
@@ -992,26 +1029,26 @@ def viz_model_preds_inst(version,
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
-                plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
+                # plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
                 plt.xlim((0, binimgs.shape[3]))
                 plt.ylim((0, binimgs.shape[2]))
                 # plt.setp(ax.spines.values(), color='b', linewidth=2)
                 # add_ego(bx, dx)
                 plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
 
-                ax = plt.subplot(gs[3, :])
-                ax.get_xaxis().set_ticks([])
-                ax.get_yaxis().set_ticks([])
-                # plt.setp(ax.spines.values(), color='b', linewidth=2)
-                embedded_fitted[si, ..., 3] = pred_prob_mask[si]
-                plt.imshow(embedded_fitted[si])
-                plt.xlim((0, binimgs.shape[3]))
-                plt.ylim((0, binimgs.shape[2]))
-                # add_ego(bx, dx)
-                plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
-                plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
+                # ax = plt.subplot(gs[3, :])
+                # ax.get_xaxis().set_ticks([])
+                # ax.get_yaxis().set_ticks([])
+                # # plt.setp(ax.spines.values(), color='b', linewidth=2)
+                # embedded_fitted[si, ..., 3] = pred_prob_mask[si]
+                # plt.imshow(embedded_fitted[si])
+                # plt.xlim((0, binimgs.shape[3]))
+                # plt.ylim((0, binimgs.shape[2]))
+                # # add_ego(bx, dx)
+                # plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
+                # plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
 
-                ax = plt.subplot(gs[4, :])
+                ax = plt.subplot(gs[1, :])
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
                 # plt.setp(ax.spines.values(), color='b', linewidth=2)
