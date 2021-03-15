@@ -18,6 +18,8 @@ MASK_STEP = 30
 def mask_label_to_img(label):
     return Image.fromarray((MASK_SHIFT + MASK_STEP * np.array(label)).astype('uint8'), mode='L')
 
+def mask_img_to_label(img):
+    return (np.array(img) - MASK_SHIFT) // MASK_STEP
 
 def mask_for_polygons(polygons: MultiPolygon, mask: np.ndarray) -> np.ndarray:
     def int_coords(x):

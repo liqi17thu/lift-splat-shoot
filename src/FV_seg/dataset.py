@@ -16,11 +16,18 @@ from nuimages import NuImages
 from shapely.geometry import LineString, MultiLineString, box
 from shapely import ops
 
-from .topdown_mask import get_fv_mask
+from .topdown_mask import mask_img_to_label
+
 
 MAP = ['boston-seaport', 'singapore-hollandvillage', 'singapore-onenorth', 'singapore-queenstown']
 CAM_POSITION = ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
 
+
+def label_onehot_encoding(label, num_classes=4):
+    H, W = label.shape
+    onehot = torch.zeros((num_classes, H, W))
+    onehot.scatter_(0, label[None].long(), 1)
+    return onehot
 
 def translation_matrix(vector):
     M = np.identity(4)
@@ -78,7 +85,9 @@ class CrossViewSegDataset(Dataset):
 
             path = self.nuscene.get_sample_data_path(sample_token)
             image = np.array(Image.open(path).convert('RGB'))
-            mask = get_fv_mask(self.nuscene, self.nusc_maps, sample_record, pos)
+            mask = mask_img_to_label(Image.open(path))
+
+            # mask = get_fv_mask(self.nuscene, self.nusc_maps, sample_record, pos)
             if self.sample_transforms:
                 sample = self.sample_transforms(image=image, mask=mask)
                 image, mask = sample['image'], sample['mask']
@@ -110,11 +119,14 @@ class CrossViewSegDataset(Dataset):
 
         sample_token = sample_record_data[pos]
         path = self.nuscene.get_sample_data_path(sample_token)
+        mask_path = path.splat('.')[0] + '_line_mask.png'
+
         image = np.array(Image.open(path).convert('RGB'))
-        mask = get_fv_mask(self.nuscene, self.nusc_maps, sample_record, pos)
+        mask = mask_img_to_label(Image.open(mask_path))
         if self.transforms:
             sample = self.transforms(image=image, mask=mask)
             image, mask = sample['image'], sample['mask']
+        mask = label_onehot_encoding(mask)
         return {'image': image, 'mask': mask}
 
 
