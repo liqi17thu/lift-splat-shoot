@@ -603,7 +603,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
         'recall': total_tp / (total_tp + total_fn),
         'CD_pred (precision)': total_CD1 / total_CD_num1,
         'CD_label (recall)': total_CD2 / total_CD_num2,
-        'chamfer_distance': total_CD1 / total_CD_num1 + total_CD2 / total_CD_num2,
+        'chamfer_distance': (total_CD1 + total_CD2) / (total_CD_num1 + total_CD_num2),
         'Average_precision': total_AP / len(valloader.dataset),
     }
 
@@ -632,8 +632,37 @@ def get_nusc_maps(map_folder):
                  ]}
     return nusc_maps
 
+import cv2
+from shapely import affinity, ops
+from shapely.geometry import LineString, MultiLineString, box, MultiPolygon, Polygon
 
-def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx, alpha_poly=0.2, alpha_line=0.5):
+def extract_contour(topdown_seg_mask, canvas_size, thickness=5):
+    topdown_seg_mask[topdown_seg_mask != 0] = 255
+    ret, thresh = cv2.threshold(topdown_seg_mask, 127, 255, 0)
+    contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    mask = np.zeros_like(topdown_seg_mask)
+    patch = box(1, 1, canvas_size[1] - 2, canvas_size[0] - 2)
+    idx = 0
+    for cnt in contours:
+        cnt = cnt.reshape((-1, 2))
+        cnt = np.append(cnt, cnt[0].reshape(-1, 2), axis=0)
+        line = LineString(cnt)
+        line = line.intersection(patch)
+        if isinstance(line, MultiLineString):
+            line = ops.linemerge(line)
+
+        if isinstance(line, MultiLineString):
+            for l in line:
+                idx += 1
+                cv2.polylines(mask, [np.asarray(list(l.coords), np.int32).reshape((-1, 2))], False, color=idx, thickness=thickness)
+        elif isinstance(line, LineString):
+            idx += 1
+            cv2.polylines(mask, [np.asarray(list(line.coords), np.int32).reshape((-1, 2))], False, color=idx, thickness=thickness)
+
+    return mask, idx
+
+def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx, alpha_poly=0.6, alpha_line=1.):
     egopose = nusc.get('ego_pose', nusc.get('sample_data', rec['data']['LIDAR_TOP'])['ego_pose_token'])
     map_name = scene2map[nusc.get('scene', rec['scene_token'])['name']]
 
@@ -646,27 +675,28 @@ def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx, alpha_poly=0.2, alpha
     lmap = get_local_map(nusc_maps[map_name], center,
                          50.0, poly_names, line_names)
 
-    # for name in ['road_segment', 'lane']:
-    #     for la in lmap[name]:
-    #         pts = (la - bx) / dx
-    #         plt.fill(pts[:, 0], pts[:, 1], c=(1.00, 0.50, 0.31), alpha=0.2)
-
-
     for la in lmap['road_segment']:
         pts = (la - bx) / dx
-        plt.fill(pts[:, 0], pts[:, 1], c=(124./255., 179./255., 210./255.), alpha=alpha_poly)
-    for la in lmap['lane']:
-        pts = (la - bx) / dx
-        plt.fill(pts[:, 0], pts[:, 1], c=(74./255., 163./255., 120./255.), alpha=alpha_poly)
+        # plt.plot(pts[:, 0], pts[:, 1], c=(124./255., 179./255., 210./255.), alpha=alpha_poly, linewidth=5)
+        plt.plot(pts[:, 0], pts[:, 1], c=(0., 1., 0.), alpha=alpha_poly, linewidth=5)
+    # for la in lmap['lane']:
+    #     pts = (la - bx) / dx
+    #     plt.fill(pts[:, 0], pts[:, 1], c=(74./255., 163./255., 120./255.), alpha=alpha_poly)
     for la in lmap['ped_crossing']:
+        dist = np.square(la[1:, :] - la[:-1, :]).sum(-1)
+        x1, x2 = np.argsort(dist)[-2:]
         pts = (la - bx) / dx
-        plt.plot(pts[:, 0], pts[:, 1], c=(247./255., 129./255., 132./255.), alpha=alpha_poly)
+        # plt.plot(pts[:, 0], pts[:, 1], c=(247./255., 129./255., 132./255.), alpha=alpha_poly, linewidth=5)
+        plt.plot(pts[x1:x1+2, 0], pts[x1:x1+2, 1], c=(1., 0., 0.), alpha=alpha_poly, linewidth=5)
+        plt.plot(pts[x2:x2+2, 0], pts[x2:x2+2, 1], c=(1., 0., 0.), alpha=alpha_poly, linewidth=5)
     for la in lmap['lane_divider']:
         pts = (la - bx) / dx
-        plt.plot(pts[:, 0], pts[:, 1], c=(159. / 255., 0.0, 1.0), alpha=alpha_line)
+        # plt.plot(pts[:, 0], pts[:, 1], c=(159. / 255., 0.0, 1.0), alpha=alpha_line, linewidth=5)
+        plt.plot(pts[:, 0], pts[:, 1], c=(0., 0., 1.), alpha=alpha_poly, linewidth=5)
     for la in lmap['road_divider']:
         pts = (la - bx) / dx
-        plt.plot(pts[:, 0], pts[:, 1], c=(0.0, 0.0, 1.0), alpha=alpha_line)
+        # plt.plot(pts[:, 0], pts[:, 1], c=(0.0, 0.0, 1.0), alpha=alpha_line, linewidth=5)
+        plt.plot(pts[:, 0], pts[:, 1], c=(0., 0., 1.), alpha=alpha_poly, linewidth=5)
 
 
 def get_local_map(nmap, center, stretch, layer_names, line_names):
@@ -722,18 +752,28 @@ def get_local_map(nmap, center, stretch, layer_names, line_names):
     return polys
 
 def sort_points_by_dist(coords):
+    coords = coords.astype('float')
     num_points = coords.shape[0]
-    dist_matrix = ((np.repeat(coords[:, None], num_points, 1) - coords) ** 2).sum(-1).astype('float')
+    diff_matrix = np.repeat(coords[:, None], num_points, 1) - coords
+    x_range = np.max(np.abs(diff_matrix[..., 0]))
+    y_range = np.max(np.abs(diff_matrix[..., 1]))
+    diff_matrix[..., 1] *= x_range / y_range
+    dist_matrix = np.sqrt(((diff_matrix) ** 2).sum(-1))
+    direction_matrix = diff_matrix / (dist_matrix.reshape(num_points, num_points, 1) + 1e-6)
 
     sorted_points = [coords[0]]
     sorted_indices = [0]
     dist_matrix[:, 0] = np.inf
 
+    last_direction = (0, 0)
     for i in range(num_points - 1):
-        idx = np.argmin(dist_matrix[sorted_indices]) % num_points
+        last_idx = sorted_indices[-1]
+        dist_metric = dist_matrix[last_idx] - 35 * (last_direction * direction_matrix[last_idx]).sum(-1)
+        idx = np.argmin(dist_metric) % num_points
         sorted_points.append(coords[idx])
         sorted_indices.append(idx)
         dist_matrix[:, idx] = np.inf
+        last_direction = direction_matrix[last_idx, idx]
 
     return np.stack(sorted_points, 0)
 
