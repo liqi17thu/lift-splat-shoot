@@ -876,11 +876,13 @@ def viz_model_preds_inst(version,
     car_img = Image.open('car_3.png')
     model.eval()
     # counter = 1204
-    counter = 44
+    counter = 72
+    # counter = 44
     # counter = 0
     with torch.no_grad():
         for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(loader):
-            if batchi < 11:
+            if batchi < 18:
+            # if batchi < 11:
             # if batchi < 301:
                 continue
 
@@ -1027,7 +1029,7 @@ def viz_model_preds_inst(version,
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
                 # plt.setp(ax.spines.values(), color='black', linewidth=2)
-                plt.setp(ax.spines.values(), linewidth=0)
+                # plt.setp(ax.spines.values(), linewidth=0)
 
                 # plt.legend(handles=[
                 #     # mpatches.Patch(color=(0.4, 0, 0, 0.6), label='Border'),
@@ -1053,6 +1055,7 @@ def viz_model_preds_inst(version,
                 plt.ylim((0, binimgs.shape[2]))
                 # add_ego(bx, dx)
                 plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
+                plt.setp(ax.spines.values(), linewidth=0)
                 # ax.axhline(y=0.002, c="black", linewidth=3, zorder=0)
 
 
@@ -1072,6 +1075,7 @@ def viz_model_preds_inst(version,
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
                 # plt.setp(ax.spines.values(), color='b', linewidth=2)
+                # plt.setp(ax.spines.values(), color='black', linewidth=2)
                 plt.setp(ax.spines.values(), linewidth=0)
                 # plt.imshow(inst_mask_pil)
                 # plt.imshow(simplified_mask_pil)

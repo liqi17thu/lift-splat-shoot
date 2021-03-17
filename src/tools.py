@@ -755,9 +755,9 @@ def sort_points_by_dist(coords):
     coords = coords.astype('float')
     num_points = coords.shape[0]
     diff_matrix = np.repeat(coords[:, None], num_points, 1) - coords
-    x_range = np.max(np.abs(diff_matrix[..., 0]))
-    y_range = np.max(np.abs(diff_matrix[..., 1]))
-    diff_matrix[..., 1] *= x_range / y_range
+    # x_range = np.max(np.abs(diff_matrix[..., 0]))
+    # y_range = np.max(np.abs(diff_matrix[..., 1]))
+    # diff_matrix[..., 1] *= x_range / y_range
     dist_matrix = np.sqrt(((diff_matrix) ** 2).sum(-1))
     direction_matrix = diff_matrix / (dist_matrix.reshape(num_points, num_points, 1) + 1e-6)
 
@@ -768,7 +768,7 @@ def sort_points_by_dist(coords):
     last_direction = (0, 0)
     for i in range(num_points - 1):
         last_idx = sorted_indices[-1]
-        dist_metric = dist_matrix[last_idx] - 35 * (last_direction * direction_matrix[last_idx]).sum(-1)
+        dist_metric = dist_matrix[last_idx] - 0 * (last_direction * direction_matrix[last_idx]).sum(-1)
         idx = np.argmin(dist_metric) % num_points
         sorted_points.append(coords[idx])
         sorted_indices.append(idx)
