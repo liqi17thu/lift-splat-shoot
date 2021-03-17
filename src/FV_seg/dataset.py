@@ -1,3 +1,4 @@
+import time
 import os
 import collections
 import numpy as np
@@ -23,10 +24,84 @@ MAP = ['boston-seaport', 'singapore-hollandvillage', 'singapore-onenorth', 'sing
 CAM_POSITION = ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
 
 
+class MyNuScenes(NuScenes):
+    def __init__(self,
+                 version: str = 'v1.0-mini',
+                 dataroot: str = '/data/sets/nuScenes',
+                 verbose: bool = True,
+                 map_resolution: float = 0.1):
+        super(MyNuScenes, self).__init__(version, dataroot, verbose, map_resolution)
+
+    def __make_reverse_index__(self, verbose: bool) -> None:
+        """
+        De-normalizes database to create reverse indices for common cases.
+        :param verbose: Whether to print outputs.
+        """
+
+        start_time = time.time()
+        if verbose:
+            print("Reverse indexing ...")
+
+        # Store the mapping from token to table index for each table.
+        self._token2ind = dict()
+        for table in self.table_names:
+            self._token2ind[table] = dict()
+
+            for ind, member in enumerate(getattr(self, table)):
+                self._token2ind[table][member['token']] = ind
+
+        # Decorate (adds short-cut) sample_annotation table with for category name.
+        for record in self.sample_annotation:
+            inst = self.get('instance', record['instance_token'])
+            record['category_name'] = self.get('category', inst['category_token'])['name']
+
+        # Decorate (adds short-cut) sample_data with sensor information.
+        for record in self.sample_data:
+            cs_record = self.get('calibrated_sensor', record['calibrated_sensor_token'])
+            sensor_record = self.get('sensor', cs_record['sensor_token'])
+            record['sensor_modality'] = sensor_record['modality']
+            record['channel'] = sensor_record['channel']
+
+        # Reverse-index samples with sample_data and annotations.
+        for record in self.sample:
+            record['data'] = {}
+            record['anns'] = []
+
+        for record in self.sample_data:
+            if record['is_key_frame']:
+                try:
+                    sample_record = self.get('sample', record['sample_token'])
+                except KeyError:
+                    continue
+                sample_record['data'][record['channel']] = record['token']
+
+        for ann_record in self.sample_annotation:
+            try:
+                sample_record = self.get('sample', ann_record['sample_token'])
+            except KeyError:
+                continue
+            sample_record['anns'].append(ann_record['token'])
+
+        # Add reverse indices from log records to map records.
+        if 'log_tokens' not in self.map[0].keys():
+            raise Exception('Error: log_tokens not in map table. This code is not compatible with the teaser dataset.')
+        log_to_map = dict()
+        for map_record in self.map:
+            for log_token in map_record['log_tokens']:
+                log_to_map[log_token] = map_record['token']
+        for log_record in self.log:
+            log_record['map_token'] = log_to_map[log_record['token']]
+
+        if verbose:
+            print("Done reverse indexing in {:.1f} seconds.\n======".format(time.time() - start_time))
+
+
+
 def label_onehot_encoding(label, num_classes=4):
     H, W = label.shape
-    onehot = torch.zeros((num_classes, H, W))
-    onehot.scatter_(0, label[None].long(), 1)
+    onehot = np.zeros((H, W, num_classes))
+    np.put_along_axis(onehot, label[..., None], 1, axis=-1)
+    # onehot.scatter_(0, label[None].long(), 1)
     return onehot
 
 def translation_matrix(vector):
@@ -61,13 +136,15 @@ def extract_contour(topdown_seg_mask, canvas_size, thickness=5):
 
 class CrossViewSegDataset(Dataset):
     def __init__(self, dataroot, version, transforms=None, sample_transforms=None, num_samples=999999999):
-        self.nuscene = NuScenes(dataroot=dataroot, version=version, verbose=False)
+        self.nuscene = MyNuScenes(dataroot=dataroot, version=version, verbose=False)
         self.nusc_maps = {}
         for map_name in MAP:
             self.nusc_maps[map_name] = NuScenesMap(dataroot=dataroot, map_name=map_name)
         self.transforms = transforms
         self.sample_transforms = sample_transforms
         self.num_samples = num_samples
+        self.nuscene.sample.sort(key=lambda x: (x['scene_token'], x['timestamp']))
+        self.nuscene.sample = self.nuscene.sample[74:]
 
     def __len__(self):
         return min(len(self.nuscene.sample), self.num_samples) * 6
@@ -119,14 +196,14 @@ class CrossViewSegDataset(Dataset):
 
         sample_token = sample_record_data[pos]
         path = self.nuscene.get_sample_data_path(sample_token)
-        mask_path = path.splat('.')[0] + '_line_mask.png'
+        mask_path = path.split('.')[0] + '_line_mask.png'
 
         image = np.array(Image.open(path).convert('RGB'))
         mask = mask_img_to_label(Image.open(mask_path))
+        mask = label_onehot_encoding(mask)
         if self.transforms:
             sample = self.transforms(image=image, mask=mask)
             image, mask = sample['image'], sample['mask']
-        mask = label_onehot_encoding(mask)
         return {'image': image, 'mask': mask}
 
 
@@ -137,6 +214,7 @@ class FirstViewSegDataset(Dataset):
         self.transforms = transforms
         self.sample_transforms = sample_transforms
         self.num_samples = num_samples
+
 
     def __len__(self):
         return min(self.num_samples, len(self.nuimage.sample))

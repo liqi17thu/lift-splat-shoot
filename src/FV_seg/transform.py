@@ -2,8 +2,8 @@ import albumentations as albu
 from albumentations.pytorch import ToTensor
 
 
-def pre_transforms(image_size=224):
-    return [albu.Resize(image_size, image_size, p=1)]
+def pre_transforms(image_size=(224, 224)):
+    return [albu.Resize(image_size[0], image_size[1], p=1)]
 
 
 def hard_transforms():
@@ -56,7 +56,7 @@ def resize_transforms(image_size=224):
 def post_transforms():
     # we use ImageNet image normalization
     # and convert it to torch.Tensor
-    return [albu.Normalize(), ToTensor()]
+    return [albu.Normalize(), ToTensor(num_classes=4)]
 
 
 def compose(transforms_to_compose):

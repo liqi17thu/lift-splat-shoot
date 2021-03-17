@@ -25,7 +25,7 @@ parser.add_argument('--encoder-lr', default=0.0005, type=float)
 parser.add_argument('--encoder-wd', default=0.00003, type=float)
 
 
-parser.add_argument('--bs', default=32, type=int)
+parser.add_argument('--bs', default=64, type=int)
 parser.add_argument('--epochs', default=20, type=int)
 parser.add_argument('--logdir', default='./logs/segmentation', type=str)
 
