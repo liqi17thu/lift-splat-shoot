@@ -830,7 +830,8 @@ def viz_model_preds_inst(version,
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
     elif method == 'HDMapNet':
-        model = HDMapNet(xbound, ybound, outC=outC)
+        # model = HDMapNet(xbound, ybound, outC=outC)
+        model = HDMapNet(xbound, ybound, outC=outC, cam_encoding=False, camC=3)
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
     elif method == 'VPN':
@@ -839,6 +840,8 @@ def viz_model_preds_inst(version,
         model = PointPillar(outC, xbound, ybound, zbound)
     elif method == 'VPNPP':
         model = VPNet(outC, lidar=True, xbound=xbound, ybound=ybound, zbound=zbound)
+    elif method == 'ori_VPN':
+        model = VPNModel(outC)
     else:
         raise NotImplementedError
 
@@ -941,9 +944,9 @@ def viz_model_preds_inst(version,
             #     # plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
             #     # plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
             #     # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
-            #     plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-            #     plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-            #     plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+            #     # plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+            #     # plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+            #     # plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
             #     plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
             #     plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
             #     plt.xlim((0, binimgs.shape[3]))
@@ -989,8 +992,8 @@ def viz_model_preds_inst(version,
                     prob[single_class_inst_mask == 0] = 0
                     max_pooled_1 = max_pool_1(prob.unsqueeze(0))[0]
                     max_pooled_2 = max_pool_2(prob.unsqueeze(0))[0]
-                    nms_mask_1 = ((max_pooled_1 - prob) < 1e-7).cpu().numpy()
-                    nms_mask_2 = ((max_pooled_2 - prob) < 1e-7).cpu().numpy()
+                    nms_mask_1 = ((max_pooled_1 - prob) < 1e-1).cpu().numpy()
+                    nms_mask_2 = ((max_pooled_2 - prob) < 1e-1).cpu().numpy()
                     nms_mask = nms_mask_1 | nms_mask_2
 
                     for j in range(1, num_inst+1):

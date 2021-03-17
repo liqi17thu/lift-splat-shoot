@@ -677,11 +677,11 @@ def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx, alpha_poly=0.6, alpha
 
     for la in lmap['road_segment']:
         pts = (la - bx) / dx
-        # plt.plot(pts[:, 0], pts[:, 1], c=(124./255., 179./255., 210./255.), alpha=alpha_poly, linewidth=5)
-        plt.plot(pts[:, 0], pts[:, 1], c=(0., 1., 0.), alpha=alpha_poly, linewidth=5)
-    # for la in lmap['lane']:
-    #     pts = (la - bx) / dx
-    #     plt.fill(pts[:, 0], pts[:, 1], c=(74./255., 163./255., 120./255.), alpha=alpha_poly)
+        plt.plot(pts[:, 0], pts[:, 1], c=(124./255., 179./255., 210./255.), alpha=alpha_poly, linewidth=5)
+        # plt.plot(pts[:, 0], pts[:, 1], c=(0., 1., 0.), alpha=alpha_poly, linewidth=5)
+    for la in lmap['lane']:
+        pts = (la - bx) / dx
+        plt.fill(pts[:, 0], pts[:, 1], c=(74./255., 163./255., 120./255.), alpha=alpha_poly)
     for la in lmap['ped_crossing']:
         dist = np.square(la[1:, :] - la[:-1, :]).sum(-1)
         x1, x2 = np.argsort(dist)[-2:]
