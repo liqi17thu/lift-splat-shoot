@@ -1094,3 +1094,174 @@ def viz_model_preds_inst(version,
                 plt.savefig(imname)
                 # plt.savefig(imname, dpi=800)
                 counter += 1
+
+
+def gen_pred_pc(version,
+                modelf,
+                dataroot='data/nuScenes',
+                map_folder='data/nuScenes',
+                gpuid=0,
+                viz_train=False,
+                outC=4,
+                method='temporal_HDMapNet',
+
+                preprocess=False,
+                H=900, W=1600,
+                resize_lim=(0.193, 0.225),
+                final_dim=(128, 352),
+                # final_dim=(300, 400),
+                bot_pct_lim=(0.0, 0.22),
+                rot_lim=(-5.4, 5.4),
+                line_width=2,
+                rand_flip=True,
+
+                xbound=[-30.0, 30.0, 0.15],
+                ybound=[-15.0, 15.0, 0.15],
+                zbound=[-10.0, 10.0, 20.0],
+                dbound=[4.0, 45.0, 1.0],
+
+                bsz=4,
+                nworkers=10,
+                ):
+    grid_conf = {
+        'xbound': xbound,
+        'ybound': ybound,
+        'zbound': zbound,
+        'dbound': dbound,
+    }
+    cams = ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+            'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
+    data_aug_conf = {
+                    'resize_lim': resize_lim,
+                    'final_dim': final_dim,
+                    'rot_lim': rot_lim,
+                    'H': H, 'W': W,
+                    'rand_flip': rand_flip,
+                    'line_width': line_width,
+                    'preprocess': preprocess,
+                    'bot_pct_lim': bot_pct_lim,
+                    'cams': cams,
+                    'Ncams': 6,
+                }
+
+    temporal = 'temporal' in method
+    if temporal:
+        parser_name = 'temporalsegmentationdata'
+    else:
+        parser_name = 'segmentationdata'
+
+    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
+                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
+                                          parser_name=parser_name, distributed=False)
+    loader = trainloader if viz_train else valloader
+    nusc_maps = get_nusc_maps(map_folder)
+
+    device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
+
+    if method == 'lift_splat':
+        model = compile_model(grid_conf, data_aug_conf, outC=outC)
+    elif method == 'HDMapNet':
+        # model = HDMapNet(xbound, ybound, outC=outC)
+        model = HDMapNet(xbound, ybound, outC=outC, cam_encoding=False, camC=3)
+    elif method == 'temporal_HDMapNet':
+        model = TemporalHDMapNet(xbound, ybound, outC=outC)
+    elif method == 'VPN':
+        model = VPNet(outC=outC)
+    elif method == 'PP':
+        model = PointPillar(outC, xbound, ybound, zbound)
+    elif method == 'VPNPP':
+        model = VPNet(outC, lidar=True, xbound=xbound, ybound=ybound, zbound=zbound)
+    elif method == 'ori_VPN':
+        model = VPNModel(outC)
+    else:
+        raise NotImplementedError
+
+    model.load_state_dict(torch.load(modelf))
+    model.to(device)
+
+    dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
+    dx, bx = dx[:2].numpy(), bx[:2].numpy()
+
+    scene2map = {}
+    for rec in loader.dataset.nusc.scene:
+        log = loader.dataset.nusc.get('log', rec['log_token'])
+        scene2map[rec['name']] = log['location']
+
+    max_pool_1 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
+    max_pool_2 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
+    post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
+
+    model.eval()
+    with torch.no_grad():
+        for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(loader):
+            # if batchi < 18:
+            #     continue
+
+            out, embedded = model(
+                    points.cuda(),
+                    points_mask.cuda(),
+                    imgs.to(device),
+                    rots.to(device),
+                    trans.to(device),
+                    intrins.to(device),
+                    post_rots.to(device),
+                    post_trans.to(device),
+                    translation.to(device),
+                    yaw_pitch_roll.to(device),
+                    )
+            origin_out = out
+            out = out.softmax(1).cpu()
+
+            preds = onehot_encoding(out).cpu().numpy()
+            embedded = embedded.cpu()
+
+            for si in range(imgs.shape[0]):
+                inst_mask = np.zeros((200, 400), dtype='int32')
+                inst_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
+
+                simplified_coords = []
+
+                count = 0
+                for i in range(1, preds.shape[1]):
+                    single_mask = preds[si][i].astype('uint8')
+                    single_embedded = embedded[si].permute(1, 2, 0)
+                    single_class_inst_mask, single_class_inst_coords = post_processor.postprocess(single_mask, single_embedded)
+                    if single_class_inst_mask is None:
+                        continue
+
+                    num_inst = len(single_class_inst_coords)
+
+                    prob = origin_out[si][i]
+                    prob[single_class_inst_mask == 0] = 0
+                    max_pooled_1 = max_pool_1(prob.unsqueeze(0))[0]
+                    max_pooled_2 = max_pool_2(prob.unsqueeze(0))[0]
+                    nms_mask_1 = ((max_pooled_1 - prob) < 1e-1).cpu().numpy()
+                    nms_mask_2 = ((max_pooled_2 - prob) < 1e-1).cpu().numpy()
+                    nms_mask = nms_mask_1 | nms_mask_2
+
+                    for j in range(1, num_inst+1):
+                        idx = np.where(nms_mask & (single_class_inst_mask == j))
+                        full_idx = np.where((single_class_inst_mask == j))
+                        if len(idx[0]) == 0:
+                            continue
+
+                        lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
+                        full_lane_coord = np.vstack((full_idx[1], full_idx[0])).transpose()
+
+                        range_0 = np.max(lane_coordinate[:, 0]) - np.min(lane_coordinate[:, 0])
+                        range_1 = np.max(lane_coordinate[:, 1]) - np.min(lane_coordinate[:, 1])
+                        if range_0 > range_1:
+                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[0])
+                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[0])
+                        else:
+                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[1])
+                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[1])
+
+                        lane_coordinate.insert(0, full_lane_coord[0])
+                        lane_coordinate.insert(-1, full_lane_coord[-1])
+                        lane_coordinate = np.stack(lane_coordinate)
+                        lane_coordinate = sort_points_by_dist(lane_coordinate)
+                        simplified_coords.append(lane_coordinate)
+
+                    inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
+                    count += num_inst
