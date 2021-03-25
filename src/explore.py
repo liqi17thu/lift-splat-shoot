@@ -1260,6 +1260,13 @@ def gen_pred_pc(version,
     model.load_state_dict(torch.load(modelf))
     model.to(device)
 
+    val = 0.01
+    fH, fW = final_dim
+    # fH, fW = 300, 400
+    plt.figure(figsize=(3*fW*val, (2*fH)*val))
+    gs = mpl.gridspec.GridSpec(2, 3, height_ratios=(1, 1))
+    gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
+
     dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
     dx, bx = dx[:2].numpy(), bx[:2].numpy()
 
@@ -1309,6 +1316,17 @@ def gen_pred_pc(version,
             embedded = embedded.cpu()
 
             for si in range(imgs.shape[0]):
+                plt.clf()
+                for imgi, img in enumerate(imgs[si]):
+                    plt.subplot(gs[imgi // 3, imgi % 3])
+                    showimg = denormalize_img(img)
+                    # flip the bottom images
+                    if imgi > 2:
+                        showimg = showimg.transpose(Image.FLIP_LEFT_RIGHT)
+                    plt.imshow(showimg)
+                    plt.axis('off')
+                plt.savefig(f'eval_img{counter:06}.png')
+
                 mask = preds[si]
                 pc_divider = get_pc_from_mask(mask[1])
                 pc_ped = get_pc_from_mask(mask[2])
