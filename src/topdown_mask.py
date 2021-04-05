@@ -41,6 +41,29 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
         super(MyNuScenesMapExplorer, self).__init__(map_api, representative_layers, color_map)
 
     @staticmethod
+    def mask_for_lines_grad(lines, mask):
+        """
+        Convert a Shapely LineString back to an image mask ndarray.
+        :param lines: List of shapely LineStrings to be converted to a numpy array.
+        :param mask: Canvas where mask will be generated.
+        :return: Numpy ndarray line mask.
+        """
+        if lines.geom_type == 'MultiLineString':
+            for line in lines:
+                coords = np.asarray(list(line.coords), np.int32)
+                coords = coords.reshape((-1, 2))
+                cv2.polylines(mask, [coords], False, color=0.2, thickness=5)
+                cv2.polylines(mask, [coords], False, color=0.5, thickness=3)
+                cv2.polylines(mask, [coords], False, color=1, thickness=1)
+        else:
+            coords = np.asarray(list(lines.coords), np.int32)
+            coords = coords.reshape((-1, 2))
+            cv2.polylines(mask, [coords], False, color=0.2, thickness=5)
+            cv2.polylines(mask, [coords], False, color=0.5, thickness=3)
+            cv2.polylines(mask, [coords], False, color=1, thickness=1)
+        return mask
+
+    @staticmethod
     def mask_for_lines(lines, mask, id, thickness=5):
         """
         Convert a Shapely LineString back to an image mask ndarray.
@@ -126,7 +149,7 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
                     new_polygon = MultiPolygon([new_polygon])
                 map_mask, idx = self.mask_for_polygons(new_polygon, map_mask, idx)
 
-        return map_mask, idx
+        return map_mask, None, idx
 
     def _line_geom_to_mask(self,
                            layer_geom: List[LineString],
@@ -156,6 +179,7 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
         trans_y = -patch_y + patch_h / 2.0
 
         map_mask = np.zeros(canvas_size, np.uint8)
+        map_grad_mask = np.zeros(canvas_size, np.float)
 
         idx = 0
         for line in layer_geom:
@@ -166,7 +190,8 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
                 new_line = affinity.scale(new_line, xfact=scale_width, yfact=scale_height, origin=(0, 0))
 
                 map_mask, idx = self.mask_for_lines(new_line, map_mask, idx, thickness=thickness)
-        return map_mask, idx
+                map_grad_mask = self.mask_for_lines_grad(new_line, map_grad_mask)
+        return map_mask, map_grad_mask, idx
 
     def _layer_geom_to_mask(self,
                             layer_name: str,
@@ -198,14 +223,16 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
         """
         # Get each layer mask and stack them into a numpy tensor.
         map_mask = []
+        map_grad_mask = []
         num_inst = []
         for layer_name, layer_geom in map_geom:
-            layer_mask, layer_inst = self._layer_geom_to_mask(layer_name, layer_geom, local_box, canvas_size, thickness)
+            layer_mask, layer_grad_mask, layer_inst = self._layer_geom_to_mask(layer_name, layer_geom, local_box, canvas_size, thickness)
             if layer_mask is not None:
                 map_mask.append(layer_mask)
+                map_grad_mask.append(layer_grad_mask)
                 num_inst.append(layer_inst)
 
-        return np.array(map_mask), np.array(num_inst)
+        return np.array(map_mask), np.array(map_grad_mask), np.array(num_inst)
 
     def _get_layer_geom(self,
                         patch_box: Tuple[float, float, float, float],
@@ -293,10 +320,10 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
         # Convert geometry of each layer into mask and stack them into a numpy tensor.
         # Convert the patch box from global coordinates to local coordinates by setting the center to (0, 0).
         local_box = (0.0, 0.0, patch_box[2], patch_box[3])
-        map_mask, num_inst = self.map_geom_to_mask(map_geom, local_box, canvas_size, thickness=thickness)
+        map_mask, map_grad_mask, num_inst = self.map_geom_to_mask(map_geom, local_box, canvas_size, thickness=thickness)
         assert np.all(map_mask.shape[1:] == canvas_size)
 
-        return map_mask, num_inst
+        return map_mask, map_grad_mask, num_inst
 
 
 def gen_topdown_mask(nuscene, nusc_maps, sample_record, patch_size, canvas_size, seg_layers, thickness=5):
@@ -313,17 +340,19 @@ def gen_topdown_mask(nuscene, nusc_maps, sample_record, patch_size, canvas_size,
     scene_record = nuscene.get('scene', sample_record['scene_token'])
     log_record = nuscene.get('log', scene_record['log_token'])
     location = log_record['location']
-    topdown_seg_mask, num_inst = nusc_maps[location].get_map_mask(patch_box, patch_angle, seg_layers, canvas_size, thickness=thickness)
+    topdown_seg_mask, topdown_grad_mask, num_inst = nusc_maps[location].get_map_mask(patch_box, patch_angle, seg_layers, canvas_size, thickness=thickness)
     # topdown_seg_mask = np.flip(topdown_seg_mask, 1)  # left-right correction
-    return topdown_seg_mask, num_inst
+    return topdown_seg_mask, topdown_grad_mask, num_inst
 
 
-def extract_contour(topdown_seg_mask, canvas_size, thickness=5):
+def extract_contour(topdown_seg_mask, canvas_size, thickness=5, grad=False):
     topdown_seg_mask[topdown_seg_mask != 0] = 255
     ret, thresh = cv2.threshold(topdown_seg_mask, 127, 255, 0)
     contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     mask = np.zeros_like(topdown_seg_mask)
+    if grad:
+        mask = mask.astype('float')
     patch = box(1, 1, canvas_size[1] - 2, canvas_size[0] - 2)
     idx = 0
     for cnt in contours:
@@ -336,10 +365,19 @@ def extract_contour(topdown_seg_mask, canvas_size, thickness=5):
 
         if isinstance(line, MultiLineString):
             for l in line:
-                idx += 1
-                cv2.polylines(mask, [np.asarray(list(l.coords), np.int32).reshape((-1, 2))], False, color=idx, thickness=thickness)
+                if grad:
+                    cv2.polylines(mask, [np.asarray(list(l.coords), np.int32).reshape((-1, 2))], False, color=0.2, thickness=5)
+                    cv2.polylines(mask, [np.asarray(list(l.coords), np.int32).reshape((-1, 2))], False, color=0.5, thickness=3)
+                    cv2.polylines(mask, [np.asarray(list(l.coords), np.int32).reshape((-1, 2))], False, color=1, thickness=1)
+                else:
+                    idx += 1
+                    cv2.polylines(mask, [np.asarray(list(l.coords), np.int32).reshape((-1, 2))], False, color=idx, thickness=thickness)
         elif isinstance(line, LineString):
-            idx += 1
-            cv2.polylines(mask, [np.asarray(list(line.coords), np.int32).reshape((-1, 2))], False, color=idx, thickness=thickness)
-
+            if grad:
+                cv2.polylines(mask, [np.asarray(list(line.coords), np.int32).reshape((-1, 2))], False, color=0.2, thickness=5)
+                cv2.polylines(mask, [np.asarray(list(line.coords), np.int32).reshape((-1, 2))], False, color=0.5, thickness=3)
+                cv2.polylines(mask, [np.asarray(list(line.coords), np.int32).reshape((-1, 2))], False, color=1, thickness=1)
+            else:
+                idx += 1
+                cv2.polylines(mask, [np.asarray(list(line.coords), np.int32).reshape((-1, 2))], False, color=idx, thickness=thickness)
     return mask, idx

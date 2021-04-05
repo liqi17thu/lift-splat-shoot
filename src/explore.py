@@ -49,7 +49,7 @@ def gen_data(version,
             rot_lim=(-5.4, 5.4),
             rand_flip=False,
             ncams=6,
-            line_width=1,
+            line_width=5,
             preprocess=False,
             overwrite=False,
 
@@ -95,11 +95,12 @@ def gen_data(version,
             continue
 
         seg_mask, inst_mask = nusc_data.get_lineimg(rec)
-        seg_mask = label_onehot_decoding(seg_mask).numpy()
-        seg_mask = cv2.medianBlur(seg_mask.astype('uint8') * 10, 3, cv2.BORDER_DEFAULT)
+        seg_mask = (seg_mask[1:].sum(0).numpy() * 50 + 30).astype('uint8')
+        # seg_mask = label_onehot_decoding(seg_mask).numpy().astype('uint8')
+        # seg_mask = cv2.medianBlur(seg_mask.astype('uint8') * 10, 3, cv2.BORDER_DEFAULT)
 
-        Image.fromarray(seg_mask * 10).save(seg_path)
-        Image.fromarray(inst_mask.numpy().astype('uint8') * 10).save(inst_path)
+        Image.fromarray(seg_mask).save(seg_path)
+        # Image.fromarray(inst_mask.numpy().astype('uint8') * 10).save(inst_path)
 
 
 

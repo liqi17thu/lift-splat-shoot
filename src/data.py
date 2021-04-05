@@ -250,8 +250,8 @@ class NuscData(torch.utils.data.Dataset):
         line_seg_layers = ['road_divider', 'lane_divider', 'ped_crossing_line']
         lane_seg_layers = ['road_segment', 'lane']
 
-        line_mask, line_inst = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness)
-        lane_mask, lane_inst = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=lane_seg_layers, thickness=self.thickness)
+        line_mask, line_grad_mask, line_inst = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness)
+        lane_mask, _, lane_inst = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=lane_seg_layers, thickness=self.thickness)
 
         cum_inst = np.cumsum(line_inst)
         for i in range(1, line_mask.shape[0]):
@@ -259,6 +259,7 @@ class NuscData(torch.utils.data.Dataset):
 
         contour_mask, contour_inst = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness)
         contour_thick_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness+3)
+        contour_grad_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness, grad=True)
         contour_mask[contour_mask != 0] += cum_inst[-1]
 
         # inst_mask = np.sum(line_mask, 0).astype('int32')
@@ -272,10 +273,12 @@ class NuscData(torch.utils.data.Dataset):
         inst_mask[1] = np.sum(line_mask[:2], axis=0)
         inst_mask[1][(inst_mask[2] != 0) | (contour_thick_mask != 0)] = 0
 
-        seg_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
-        seg_mask[3] = contour_mask != 0
-        seg_mask[2] = (line_mask[2] != 0) & (contour_thick_mask == 0)
-        seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0) & (contour_thick_mask == 0)
+        seg_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1])it st)
+        seg_mask[3] = contour_grad_mask
+        seg_mask[2] = line_grad_mask[2]
+        seg_mask[2][contour_thick_mask != 0] = 0
+        seg_mask[1] = np.sum(line_grad_mask[:2], axis=0)
+        seg_mask[1][(seg_mask[2] != 0) | (contour_thick_mask != 0)] = 0
         seg_mask[0] = 1 - np.any(seg_mask, axis=0)
 
         # seg_mask = np.zeros((3, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
