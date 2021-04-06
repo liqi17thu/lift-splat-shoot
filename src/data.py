@@ -273,7 +273,7 @@ class NuscData(torch.utils.data.Dataset):
         inst_mask[1] = np.sum(line_mask[:2], axis=0)
         inst_mask[1][(inst_mask[2] != 0) | (contour_thick_mask != 0)] = 0
 
-        seg_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1])it st)
+        seg_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]))
         seg_mask[3] = contour_grad_mask
         seg_mask[2] = line_grad_mask[2]
         seg_mask[2][contour_thick_mask != 0] = 0
@@ -332,12 +332,14 @@ class SegmentationData(NuscData):
         cams = self.choose_cams()
         imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll = self.get_image_data(rec, cams)
         seg_mask, inst_mask = self.get_lineimg(rec)
-        lidar_data = self.get_lidar_data(rec, nsweeps=3)
-        lidar_data = lidar_data.transpose(1, 0)
-        num_points = lidar_data.shape[0]
-        lidar_data = pad_or_trim_to_np(lidar_data, [81920, 5]).astype('float32')
-        lidar_mask = np.ones(81920).astype('float32')
-        lidar_mask[num_points:] *= 0.0
+        lidar_data = 0
+        lidar_mask = 0
+        # lidar_data = self.get_lidar_data(rec, nsweeps=3)
+        # lidar_data = lidar_data.transpose(1, 0)
+        # num_points = lidar_data.shape[0]
+        # lidar_data = pad_or_trim_to_np(lidar_data, [81920, 5]).astype('float32')
+        # lidar_mask = np.ones(81920).astype('float32')
+        # lidar_mask[num_points:] *= 0.0
         return lidar_data, lidar_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, seg_mask, inst_mask
 
 
@@ -423,7 +425,7 @@ def compile_data(version, dataroot, data_aug_conf, grid_conf, bsz, nworkers, par
         train_sampler = None
         val_sampler = None
         trainloader = torch.utils.data.DataLoader(traindata, batch_size=bsz,
-                                                  shuffle=False,
+                                                  shuffle=True,
                                                   num_workers=nworkers,
                                                   drop_last=True,
                                                   worker_init_fn=worker_rnd_init)
