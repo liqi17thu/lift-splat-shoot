@@ -33,7 +33,7 @@ from .models import compile_model
 from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet
 from .postprocess import LaneNetPostProcessor
-from .pointpillar import PointPillar
+# from .pointpillar import PointPillar
 from .ori_vpn import VPNModel
 from .metric import LaneSegMetric
 
@@ -867,8 +867,12 @@ def viz_model_preds_inst(version,
     # gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(fH, fH, 1.5*fW))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
-    max_pool_1 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
-    max_pool_2 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
+    # max_pool_1 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
+    # max_pool_2 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
+    max_pool_1 = nn.MaxPool2d((3, 5), padding=(1, 2), stride=1)
+    avg_pool_1 = nn.AvgPool2d((9, 5), padding=(4, 2), stride=1)
+    max_pool_2 = nn.MaxPool2d((5, 3), padding=(2, 1), stride=1)
+    avg_pool_2 = nn.AvgPool2d((5, 9), padding=(2, 4), stride=1)
     post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
     pca = PCA(n_components=3)
 
@@ -879,13 +883,13 @@ def viz_model_preds_inst(version,
     car_img = Image.open('car_3.png')
     model.eval()
     # counter = 1204
-    counter = 72
-    # counter = 44
+    # counter = 72
+    counter = 44
     # counter = 0
     with torch.no_grad():
         for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(loader):
-            if batchi < 18:
-            # if batchi < 11:
+            # if batchi < 18:
+            if batchi < 11:
             # if batchi < 301:
                 continue
 
@@ -907,6 +911,11 @@ def viz_model_preds_inst(version,
             pred_prob_mask = 1 - out[:, 0]
 
             preds = onehot_encoding(out).cpu().numpy()
+            for i in range(preds.shape[0]):
+                temp = np.any(preds[i, 1:], axis=0)
+                with open(f'mat_{batchi}_{i}', 'wb') as f:
+                    np.save(f, temp)
+
             embedded = embedded.cpu()
             inst_label = inst_label.sum(1)
 
@@ -990,11 +999,19 @@ def viz_model_preds_inst(version,
 
                     prob = origin_out[si][i]
                     prob[single_class_inst_mask == 0] = 0
-                    max_pooled_1 = max_pool_1(prob.unsqueeze(0))[0]
-                    max_pooled_2 = max_pool_2(prob.unsqueeze(0))[0]
-                    nms_mask_1 = ((max_pooled_1 - prob) < 1e-1).cpu().numpy()
-                    nms_mask_2 = ((max_pooled_2 - prob) < 1e-1).cpu().numpy()
-                    nms_mask = nms_mask_1 | nms_mask_2
+                    # max_pooled_1 = max_pool_1(prob.unsqueeze(0))[0]
+                    # max_pooled_2 = max_pool_2(prob.unsqueeze(0))[0]
+                    # nms_mask_1 = ((max_pooled_1 - prob) < 1e-1).cpu().numpy()
+                    # nms_mask_2 = ((max_pooled_2 - prob) < 1e-1).cpu().numpy()
+                    # nms_mask = nms_mask_1 | nms_mask_2
+
+                    nms_mask_1 = ((max_pool_1(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
+                    avg_mask_1 = avg_pool_1(prob.unsqueeze(0))[0].cpu().numpy()
+                    nms_mask_2 = ((max_pool_2(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
+                    avg_mask_2 = avg_pool_2(prob.unsqueeze(0))[0].cpu().numpy()
+                    vertical_mask = avg_mask_1 > avg_mask_2
+                    horizontal_mask = ~vertical_mask
+                    nms_mask = (vertical_mask & nms_mask_1) | (horizontal_mask & nms_mask_2)
 
                     for j in range(1, num_inst+1):
                         idx = np.where(nms_mask & (single_class_inst_mask == j))
@@ -1083,7 +1100,8 @@ def viz_model_preds_inst(version,
                 # plt.imshow(inst_mask_pil)
                 # plt.imshow(simplified_mask_pil)
                 for coord in simplified_coords:
-                    plt.plot(coord[:, 0], coord[:, 1], linewidth=5)
+                    plt.plot(coord[:, 0], coord[:, 1], linewidth=3)
+                    plt.scatter(coord[:, 0], coord[:, 1], linewidth=1)
 
                 plt.xlim((0, binimgs.shape[3]))
                 plt.ylim((0, binimgs.shape[2]))
