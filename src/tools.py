@@ -508,6 +508,8 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
     with torch.no_grad():
         for batch in loader:
             points, points_mask, allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask = batch
+            binimgs = binimgs[..., -400:]
+            inst_mask = inst_mask[..., -400:]
             binimgs = binimgs.cuda()
             inst_mask = inst_mask.cuda()
             preds, embedded = model(
@@ -751,6 +753,8 @@ def get_local_map(nmap, center, stretch, layer_names, line_names):
 
     return polys
 
+from copy import deepcopy
+
 def sort_points_by_dist(coords):
     coords = coords.astype('float')
     num_points = coords.shape[0]
@@ -759,21 +763,28 @@ def sort_points_by_dist(coords):
     # y_range = np.max(np.abs(diff_matrix[..., 1]))
     # diff_matrix[..., 1] *= x_range / y_range
     dist_matrix = np.sqrt(((diff_matrix) ** 2).sum(-1))
+    dist_matrix_full = deepcopy(dist_matrix)
     direction_matrix = diff_matrix / (dist_matrix.reshape(num_points, num_points, 1) + 1e-6)
 
     sorted_points = [coords[0]]
     sorted_indices = [0]
     dist_matrix[:, 0] = np.inf
 
-    last_direction = (0, 0)
+    last_direction = np.array([0, 0])
     for i in range(num_points - 1):
         last_idx = sorted_indices[-1]
         dist_metric = dist_matrix[last_idx] - 0 * (last_direction * direction_matrix[last_idx]).sum(-1)
         idx = np.argmin(dist_metric) % num_points
+        new_direction = direction_matrix[last_idx, idx]
+        if dist_metric[idx] > 3 and min(dist_matrix_full[idx][sorted_indices]) < 5:
+            dist_matrix[:, idx] = np.inf
+            continue
+        if dist_metric[idx] > 10 and i > num_points * 0.9:
+            break
         sorted_points.append(coords[idx])
         sorted_indices.append(idx)
         dist_matrix[:, idx] = np.inf
-        last_direction = direction_matrix[last_idx, idx]
+        last_direction = new_direction
 
     return np.stack(sorted_points, 0)
 

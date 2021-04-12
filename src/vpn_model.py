@@ -186,9 +186,11 @@ class VPNet(nn.Module):
         if self.extrinsic:
             self.up_sampler = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         else:
-            self.up_sampler = nn.Upsample(scale_factor=5, mode='bilinear', align_corners=True)
+            # self.up_sampler = nn.Upsample(scale_factor=5, mode='bilinear', align_corners=True)
+            self.up_sampler = nn.Upsample(size=(200, 400), mode='bilinear', align_corners=True)
         self.lidar = lidar
         if lidar:
+            xbound = [-20.0, 40.0, 0.15]
             self.pp = PointPillarEncoder(128, xbound, ybound, zbound)
             self.bevencode = BevEncode(inC=camC+128, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
         else:

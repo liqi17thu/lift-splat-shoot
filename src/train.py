@@ -60,14 +60,14 @@ def train(version='mini',
           preprocess=False,
 
           H=900, W=1600,
-          final_dim=(128, 352),
+          final_dim=(256, 704),
           ncams=6,
           line_width=5,
           max_grad_norm=5.0,
           pos_weight=2.13,
           logdir='./runs',
 
-          xbound=[-30.0, 30.0, 0.15],
+          xbound=[-40.0, 40.0, 0.15],
           ybound=[-15.0, 15.0, 0.15],
           zbound=[-10.0, 10.0, 20.0],
           dbound=[4.0, 45.0, 1.0],
@@ -135,6 +135,7 @@ def train(version='mini',
     elif method == 'VIT':
         model = VITNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'PP':
+        xbound = [-20.0, 40.0, 0.15]
         model = PointPillar(outC, xbound, ybound, zbound, embedded_dim=embedded_dim)
     elif method == 'VPNPP':
         model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim, lidar=True, xbound=xbound, ybound=ybound, zbound=zbound)
@@ -174,6 +175,8 @@ def train(version='mini',
 
         np.random.seed()
         for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask) in enumerate(trainloader):
+            binimgs = binimgs[..., -400:]
+            inst_mask = inst_mask[..., -400:]
             t0 = time()
             opt.zero_grad()
             preds, embedded = model(points.cuda(),

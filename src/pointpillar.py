@@ -87,7 +87,7 @@ class PointPillar(nn.Module):
       nn.Conv2d(128, embedded_dim, 1),
     )
 
-  def forward(self, points, points_mask, 
+  def forward(self, points, points_mask,
     x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
     points_xyz = points[:, :, :3]
     points_feature = points[:, :, 3:]
@@ -105,7 +105,7 @@ class PointPillar(nn.Module):
     points_feature = self.pn(points_feature, voxels['points_mask'])
     voxel_feature = torch_scatter.scatter_mean(
       points_feature,
-      torch.unsqueeze(voxels['voxel_indices'], dim=1), 
+      torch.unsqueeze(voxels['voxel_indices'], dim=1),
       dim=2,
       dim_size=voxels['num_voxels'])
     batch_size = points.size(0)
@@ -174,7 +174,7 @@ class PointPillarEncoder(nn.Module):
     points_feature = self.pn(points_feature, voxels['points_mask'])
     voxel_feature = torch_scatter.scatter_mean(
       points_feature,
-      torch.unsqueeze(voxels['voxel_indices'], dim=1), 
+      torch.unsqueeze(voxels['voxel_indices'], dim=1),
       dim=2,
       dim_size=voxels['num_voxels'])
     batch_size = points.size(0)

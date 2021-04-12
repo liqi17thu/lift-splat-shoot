@@ -858,6 +858,7 @@ def viz_model_preds_inst(version,
 
     val = 0.01
     fH, fW = final_dim
+    # fH, fW = 256, 704
     # fH, fW = 300, 400
     # plt.figure(figsize=(3*fW*val, (4.5*fW + 2*fH)*val))
     # gs = mpl.gridspec.GridSpec(5, 3, height_ratios=(fH, fH, 1.5*fW, 1.5*fW, 1.5*fW))
@@ -869,9 +870,9 @@ def viz_model_preds_inst(version,
 
     # max_pool_1 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
     # max_pool_2 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
-    max_pool_1 = nn.MaxPool2d((3, 5), padding=(1, 2), stride=1)
+    max_pool_1 = nn.MaxPool2d((1, 5), padding=(0, 2), stride=1)
     avg_pool_1 = nn.AvgPool2d((9, 5), padding=(4, 2), stride=1)
-    max_pool_2 = nn.MaxPool2d((5, 3), padding=(2, 1), stride=1)
+    max_pool_2 = nn.MaxPool2d((5, 1), padding=(2, 0), stride=1)
     avg_pool_2 = nn.AvgPool2d((5, 9), padding=(2, 4), stride=1)
     post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
     pca = PCA(n_components=3)
@@ -883,13 +884,13 @@ def viz_model_preds_inst(version,
     car_img = Image.open('car_3.png')
     model.eval()
     # counter = 1204
-    # counter = 72
-    counter = 44
+    counter = 72
+    # counter = 44
     # counter = 0
     with torch.no_grad():
         for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(loader):
-            # if batchi < 18:
-            if batchi < 11:
+            if batchi < 18:
+            # if batchi < 11:
             # if batchi < 301:
                 continue
 
@@ -911,10 +912,10 @@ def viz_model_preds_inst(version,
             pred_prob_mask = 1 - out[:, 0]
 
             preds = onehot_encoding(out).cpu().numpy()
-            for i in range(preds.shape[0]):
-                temp = np.any(preds[i, 1:], axis=0)
-                with open(f'mat_{batchi}_{i}', 'wb') as f:
-                    np.save(f, temp)
+            # for i in range(preds.shape[0]):
+            #     temp = np.any(preds[i, 1:], axis=0)
+            #     with open(f'mat_{batchi}_{i}', 'wb') as f:
+            #         np.save(f, temp)
 
             embedded = embedded.cpu()
             inst_label = inst_label.sum(1)
@@ -1027,12 +1028,22 @@ def viz_model_preds_inst(version,
                         if range_0 > range_1:
                             lane_coordinate = sorted(lane_coordinate, key=lambda x: x[0])
                             full_lane_coord = sorted(full_lane_coord, key=lambda x: x[0])
+                            if full_lane_coord[0][0] < nx[0] - full_lane_coord[-1][0]:
+                                lane_coordinate.insert(0, full_lane_coord[0])
+                                lane_coordinate.insert(-1, full_lane_coord[-1])
+                            else:
+                                lane_coordinate.insert(0, full_lane_coord[-1])
+                                lane_coordinate.insert(-1, full_lane_coord[0])
                         else:
                             lane_coordinate = sorted(lane_coordinate, key=lambda x: x[1])
                             full_lane_coord = sorted(full_lane_coord, key=lambda x: x[1])
+                            if full_lane_coord[0][1] < nx[1] - full_lane_coord[-1][1]:
+                                lane_coordinate.insert(0, full_lane_coord[0])
+                                lane_coordinate.insert(-1, full_lane_coord[-1])
+                            else:
+                                lane_coordinate.insert(0, full_lane_coord[-1])
+                                lane_coordinate.insert(-1, full_lane_coord[0])
 
-                        lane_coordinate.insert(0, full_lane_coord[0])
-                        lane_coordinate.insert(-1, full_lane_coord[-1])
                         lane_coordinate = np.stack(lane_coordinate)
                         lane_coordinate = sort_points_by_dist(lane_coordinate)
                         simplified_coords.append(lane_coordinate)
@@ -1100,8 +1111,8 @@ def viz_model_preds_inst(version,
                 # plt.imshow(inst_mask_pil)
                 # plt.imshow(simplified_mask_pil)
                 for coord in simplified_coords:
-                    plt.plot(coord[:, 0], coord[:, 1], linewidth=3)
-                    plt.scatter(coord[:, 0], coord[:, 1], linewidth=1)
+                    plt.plot(coord[:, 0], coord[:, 1], linewidth=5)
+                    # plt.scatter(coord[:, 0], coord[:, 1], linewidth=1)
 
                 plt.xlim((0, binimgs.shape[3]))
                 plt.ylim((0, binimgs.shape[2]))
