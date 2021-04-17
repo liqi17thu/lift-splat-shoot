@@ -49,7 +49,7 @@ def gen_data(version,
             rot_lim=(-5.4, 5.4),
             rand_flip=False,
             ncams=6,
-            line_width=1,
+            line_width=5,
             preprocess=False,
             overwrite=False,
 
@@ -91,17 +91,24 @@ def gen_data(version,
         lidar_top_path = nusc.get_sample_data_path(rec['data']['LIDAR_TOP'])
         seg_path = lidar_top_path.split('.')[0] + '_seg_mask.png'
         inst_path = lidar_top_path.split('.')[0] + '_inst_mask.png'
+        forward_path = lidar_top_path.split('.')[0] + '_forward_mask.png'
+        backward_path = lidar_top_path.split('.')[0] + '_backward_mask.png'
         if os.path.exists(seg_path) and os.path.exists(inst_path) and not overwrite:
             continue
 
-        seg_mask, inst_mask = nusc_data.get_lineimg(rec)
+        seg_mask, inst_mask, forward_mask, backward_mask = nusc_data.get_lineimg(rec)
         seg_mask = label_onehot_decoding(seg_mask).numpy()
         seg_mask = cv2.medianBlur(seg_mask.astype('uint8') * 10, 3, cv2.BORDER_DEFAULT)
 
         Image.fromarray(seg_mask * 10).save(seg_path)
-        Image.fromarray(inst_mask.numpy().astype('uint8') * 10).save(inst_path)
+        inst_mask = (inst_mask * 30).numpy().sum(0).astype('uint8')
+        Image.fromarray(inst_mask).save(inst_path)
 
+        forward_mask = torch.stack([forward_mask, forward_mask % 100, forward_mask % 200], -1)
+        Image.fromarray((forward_mask * 40).numpy().astype('uint8')).save(forward_path)
 
+        backward_mask = torch.stack([backward_mask, backward_mask % 100, backward_mask % 200], -1)
+        Image.fromarray((backward_mask * 40).numpy().astype('uint8')).save(backward_path)
 
 def viz_ipm_with_label(version,
             dataroot='data/nuScenes',

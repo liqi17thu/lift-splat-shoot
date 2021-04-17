@@ -83,7 +83,8 @@ class NuscData(torch.utils.data.Dataset):
                 di, fi, fname = find_name(f)
                 info[f'sweeps/{di}/{fi}'] = fname
             for rec in self.nusc.sample_data:
-                if rec['channel'] == 'LIDAR_TOP' or (rec['is_key_frame'] and rec['channel'] in self.data_aug_conf['cams']):
+                if rec['channel'] == 'LIDAR_TOP' or (
+                        rec['is_key_frame'] and rec['channel'] in self.data_aug_conf['cams']):
                     rec['filename'] = info[rec['filename']]
 
     def get_scenes(self):
@@ -112,7 +113,7 @@ class NuscData(torch.utils.data.Dataset):
     def sample_augmentation(self):
         H, W = self.data_aug_conf['H'], self.data_aug_conf['W']
         fH, fW = self.data_aug_conf['final_dim']
-        resize = (fW/W, fH/H)
+        resize = (fW / W, fH / H)
         resize_dims = (fW, fH)
         crop = None
         if self.is_train:
@@ -140,7 +141,7 @@ class NuscData(torch.utils.data.Dataset):
 
     def get_image_data(self, rec, cams):
         color_jitter = torchvision.transforms.ColorJitter.get_params(
-        brightness=[0.6, 1.4], contrast=[0.6, 1.4], saturation=[0.6, 1.4], hue=[-0.2, 0.2]
+            brightness=[0.6, 1.4], contrast=[0.6, 1.4], saturation=[0.6, 1.4], hue=[-0.2, 0.2]
         )
 
         imgs = []
@@ -175,12 +176,12 @@ class NuscData(torch.utils.data.Dataset):
             # augmentation (resize, crop, horizontal flip, rotate)
             resize, resize_dims, crop, flip, rotate = self.sample_augmentation()
             img, post_rot2, post_tran2 = img_transform(img, post_rot, post_tran,
-                                                     resize=resize,
-                                                     resize_dims=resize_dims,
-                                                     crop=crop,
-                                                     flip=flip,
-                                                     rotate=rotate,
-                                                     )
+                                                       resize=resize,
+                                                       resize_dims=resize_dims,
+                                                       crop=crop,
+                                                       flip=flip,
+                                                       rotate=rotate,
+                                                       )
 
             # for convenience, make augmentation matrices 3x3
             post_tran = torch.zeros(3)
@@ -189,7 +190,8 @@ class NuscData(torch.utils.data.Dataset):
             post_rot[:2, :2] = post_rot2
 
             points, depth, _ = self.nusc.explorer.map_pointcloud_to_image(rec['data']['LIDAR_TOP'], rec['data'][cam])
-            points, intensity, _ = self.nusc.explorer.map_pointcloud_to_image(rec['data']['LIDAR_TOP'], rec['data'][cam], render_intensity=True)
+            points, intensity, _ = self.nusc.explorer.map_pointcloud_to_image(rec['data']['LIDAR_TOP'],
+                                                                              rec['data'][cam], render_intensity=True)
 
             # if self.is_train:
             #     img = color_jitter(img)
@@ -208,7 +210,7 @@ class NuscData(torch.utils.data.Dataset):
 
     def get_lidar_data(self, rec, nsweeps):
         pts = get_lidar_data(self.nusc, rec,
-                       nsweeps=nsweeps, min_distance=2.2)
+                             nsweeps=nsweeps, min_distance=2.2)
         # return torch.Tensor(pts)# [:3]  # x,y,z
         return pts
 
@@ -229,8 +231,8 @@ class NuscData(torch.utils.data.Dataset):
 
             pts = box.bottom_corners()[:2].T
             pts = np.round(
-                (pts - self.bx[:2] + self.dx[:2]/2.) / self.dx[:2]
-                ).astype(np.int32)
+                (pts - self.bx[:2] + self.dx[:2] / 2.) / self.dx[:2]
+            ).astype(np.int32)
             pts[:, [1, 0]] = pts[:, [0, 1]]
             cv2.fillPoly(img, [pts], 1.0)
 
@@ -250,15 +252,19 @@ class NuscData(torch.utils.data.Dataset):
         line_seg_layers = ['road_divider', 'lane_divider', 'ped_crossing_line']
         lane_seg_layers = ['road_segment', 'lane']
 
-        line_mask, line_inst = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness)
-        lane_mask, lane_inst = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=lane_seg_layers, thickness=self.thickness)
+        line_mask, line_inst = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size,
+                                                seg_layers=line_seg_layers, thickness=self.thickness)
+        lane_mask, lane_inst = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size,
+                                                seg_layers=lane_seg_layers, thickness=self.thickness)
 
         cum_inst = np.cumsum(line_inst)
         for i in range(1, line_mask.shape[0]):
-            line_mask[i][line_mask[i] != 0] += cum_inst[i-1]
+            line_mask[i][line_mask[i] != 0] += cum_inst[i - 1]
 
-        contour_mask, contour_inst = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness)
-        contour_thick_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness+3)
+        contour_mask, contour_inst = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size,
+                                                     thickness=self.thickness)
+        contour_thick_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size,
+                                                thickness=self.thickness + 4)
         contour_mask[contour_mask != 0] += cum_inst[-1]
 
         # inst_mask = np.sum(line_mask, 0).astype('int32')
@@ -266,6 +272,7 @@ class NuscData(torch.utils.data.Dataset):
         # inst_mask[contour_mask != 0] = contour_mask[contour_mask != 0]
 
         inst_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
+        # inst_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]))
         inst_mask[3] = contour_mask
         inst_mask[2] = line_mask[2]
         inst_mask[2][contour_thick_mask != 0] = 0
@@ -278,15 +285,32 @@ class NuscData(torch.utils.data.Dataset):
         seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0) & (contour_thick_mask == 0)
         seg_mask[0] = 1 - np.any(seg_mask, axis=0)
 
-        # seg_mask = np.zeros((3, self.canvas_size[0], self.canvas_size[1]), dtype='uint8')
-        # seg_mask[2] = contour_mask != 0
-        # seg_mask[1] = np.any(line_mask[:2], axis=0) & (contour_thick_mask == 0)
-        # seg_mask[0] = 1 - np.any(seg_mask, axis=0)
+        line_forward_mask, _ = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness, type='forward')
+        contour_forward_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness, type='forward')
 
-        # if self.instance_class_mask:
-        #     return torch.Tensor(seg_mask), torch.Tensor(inst_mask), torch.Tensor(inst_class_mask)
-        # else:
-        return torch.Tensor(seg_mask), torch.Tensor(inst_mask)
+        forward_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]))
+        forward_mask[3] = contour_forward_mask
+        forward_mask[2] = line_forward_mask[2]
+        forward_mask[2][contour_thick_mask != 0] = 0
+        forward_mask[1] = np.sum(line_forward_mask[:2], axis=0)
+        forward_mask[1][(contour_forward_mask[2] != 0) | (contour_thick_mask != 0)] = 0
+        forward_mask = forward_mask.sum(0)
+
+        line_backward_mask, _ = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness, type='backward')
+        contour_backward_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness, type='backward')
+        backward_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]))
+        backward_mask[3] = contour_backward_mask
+        backward_mask[2] = line_backward_mask[2]
+        backward_mask[2][contour_thick_mask != 0] = 0
+        backward_mask[1] = np.sum(line_backward_mask[:2], axis=0)
+        backward_mask[1][(contour_backward_mask[2] != 0) | (contour_thick_mask != 0)] = 0
+        backward_mask = backward_mask.sum(0)
+
+        forward_mask = label_onehot_encoding(forward_mask, 361)
+        backward_mask = label_onehot_encoding(backward_mask, 361)
+        direction_mask = forward_mask & backward_mask
+
+        return torch.Tensor(seg_mask), torch.Tensor(inst_mask), torch.Tensor(direction_mask)
 
     def choose_cams(self):
         if self.is_train and self.data_aug_conf['Ncams'] < len(self.data_aug_conf['cams']):
@@ -359,7 +383,8 @@ class TemporalSegmentationData(NuscData):
 
         T = self.T
         while T > 0:
-            imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll = self.get_image_data(rec, cams)
+            imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll = self.get_image_data(rec,
+                                                                                                                 cams)
             imgs_t.append(imgs)
             rots_t.append(rots)
             trans_t.append(trans)
@@ -401,9 +426,9 @@ def compile_data(version, dataroot, data_aug_conf, grid_conf, bsz, nworkers, par
         'temporalsegmentationdata': TemporalSegmentationData,
     }[parser_name]
     traindata = parser(nusc, nusc_maps, is_train=True, data_aug_conf=data_aug_conf,
-                         grid_conf=grid_conf)
-    valdata = parser(nusc, nusc_maps, is_train=False, data_aug_conf=data_aug_conf,
                        grid_conf=grid_conf)
+    valdata = parser(nusc, nusc_maps, is_train=False, data_aug_conf=data_aug_conf,
+                     grid_conf=grid_conf)
 
     if distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(traindata)

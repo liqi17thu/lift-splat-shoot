@@ -161,6 +161,7 @@ def train(version='mini',
     # loss_fn = FocalLoss(alpha=.25, gamma=2.).cuda(gpuid)
     loss_fn = SimpleLoss(pos_weight).cuda()
     embedded_loss_fn = DiscriminativeLoss(embedded_dim, delta_v, delta_d).cuda()
+    direction_loss_fn = torch.nn.BCEWithLogitsLoss(reduction='none')
 
     writer = SummaryWriter(logdir=logdir)
     val_step = 1000 if version == 'mini' else 10000
@@ -173,10 +174,10 @@ def train(version='mini',
             val_sampler.set_epoch(epoch)
 
         np.random.seed()
-        for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask) in enumerate(trainloader):
+        for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask, direction_mask) in enumerate(trainloader):
             t0 = time()
             opt.zero_grad()
-            preds, embedded = model(points.cuda(),
+            preds, embedded, direction = model(points.cuda(),
                                     points_mask.cuda(),
                                     imgs.cuda(),
                                     rots.cuda(),
@@ -189,9 +190,13 @@ def train(version='mini',
                                     )
             binimgs = binimgs.cuda()
             inst_mask = inst_mask.cuda().sum(1)
+            direction_mask = direction_mask.cuda()
             seg_loss = loss_fn(preds, binimgs)
             var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask)
-            final_loss = seg_loss * scale_seg + var_loss * scale_var + dist_loss * scale_dist
+            direction_loss = direction_loss_fn(direction, direction_mask)
+            lane_mask = ~direction_mask[:, 0]
+            direction_loss = (direction_loss * lane_mask).mean()
+            final_loss = seg_loss * scale_seg + var_loss * scale_var + dist_loss * scale_dist + direction_loss
             final_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             opt.step()

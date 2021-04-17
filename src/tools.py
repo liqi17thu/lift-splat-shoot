@@ -474,7 +474,7 @@ def get_accuracy_precision_recall_multi_class(preds, binimgs):
 import random
 from .postprocess import LaneNetPostProcessor
 
-def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, scale_var=1.0, scale_dist=1.0, use_tqdm=True, eval_mAP=False):
+def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn, scale_seg=1.0, scale_var=1.0, scale_dist=1.0, use_tqdm=True, eval_mAP=False):
 
     lane_seg_metric = LaneSegMetric()
     if eval_mAP:
@@ -507,10 +507,11 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
     loader = tqdm(valloader) if use_tqdm else valloader
     with torch.no_grad():
         for batch in loader:
-            points, points_mask, allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask = batch
+            points, points_mask, allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask, direction_mask = batch
             binimgs = binimgs.cuda()
             inst_mask = inst_mask.cuda()
-            preds, embedded = model(
+            direction_mask = direction_mask.cuda()
+            preds, embedded, direction = model(
                 points.cuda(), points_mask.cuda(),
                 allimgs.cuda(), rots.cuda(),
                 trans.cuda(), intrins.cuda(), post_rots.cuda(),
@@ -522,7 +523,10 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg=1.0, sca
             seg_loss = loss_fn(preds, binimgs).item() * bs
             var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask.sum(1))
             var_loss, dist_loss, reg_loss = var_loss.item() * bs, dist_loss.item() * bs, reg_loss.item() * bs
-            final_loss = seg_loss * scale_seg + var_loss + scale_var + dist_loss * scale_dist
+            direction_loss = direction_loss_fn(direction, direction_mask)
+            lane_mask = ~direction_mask[:, 0]
+            direction_loss = (direction_loss * lane_mask).mean() * bs
+            final_loss = seg_loss * scale_seg + var_loss + scale_var + dist_loss * scale_dist + direction_loss
 
             total_seg_loss += seg_loss
             total_reg_loss += reg_loss
@@ -697,6 +701,11 @@ def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx, alpha_poly=0.6, alpha
         pts = (la - bx) / dx
         # plt.plot(pts[:, 0], pts[:, 1], c=(0.0, 0.0, 1.0), alpha=alpha_line, linewidth=5)
         plt.plot(pts[:, 0], pts[:, 1], c=(0., 0., 1.), alpha=alpha_poly, linewidth=5)
+
+
+def get_discrete_degree(vec):
+    deg = np.mod(np.degrees(np.arctan2(vec[1], vec[0])), 360)
+    return int(deg + 0.5) + 1
 
 
 def get_local_map(nmap, center, stretch, layer_names, line_names):

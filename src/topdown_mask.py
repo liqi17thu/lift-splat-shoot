@@ -9,6 +9,8 @@ from pyquaternion import Quaternion
 from shapely import affinity, ops
 from shapely.geometry import LineString, MultiLineString, box, MultiPolygon, Polygon
 
+from .tools import get_discrete_degree
+
 
 class MyNuScenesMap(NuScenesMap):
     def __init__(self,
@@ -22,7 +24,8 @@ class MyNuScenesMap(NuScenesMap):
                      patch_angle: float,
                      layer_names: List[str] = None,
                      canvas_size: Optional[Tuple[int, int]] = (100, 100),
-                     thickness=5) -> np.ndarray:
+                     thickness=5,
+                     type='index') -> np.ndarray:
         """
         Return list of map mask layers of the specified patch.
         :param patch_box: Patch box defined as [x_center, y_center, height, width]. If None, this plots the entire map.
@@ -31,7 +34,7 @@ class MyNuScenesMap(NuScenesMap):
         :param canvas_size: Size of the output mask (h, w). If None, we use the default resolution of 10px/m.
         :return: Stacked numpy array of size [c x h x w] with c channels and the same width/height as the canvas.
         """
-        return self.explorer.get_map_mask(patch_box, patch_angle, layer_names=layer_names, canvas_size=canvas_size, thickness=thickness)
+        return self.explorer.get_map_mask(patch_box, patch_angle, layer_names=layer_names, canvas_size=canvas_size, thickness=thickness, type=type)
 
 class MyNuScenesMapExplorer(NuScenesMapExplorer):
     def __init__(self,
@@ -41,7 +44,7 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
         super(MyNuScenesMapExplorer, self).__init__(map_api, representative_layers, color_map)
 
     @staticmethod
-    def mask_for_lines(lines, mask, id, thickness=5):
+    def mask_for_lines(lines, mask, id, thickness=5, type='index'):
         """
         Convert a Shapely LineString back to an image mask ndarray.
         :param lines: List of shapely LineStrings to be converted to a numpy array.
@@ -51,14 +54,35 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
         if lines.geom_type == 'MultiLineString':
             for line in lines:
                 id += 1
-                coords = np.asarray(list(line.coords), np.int32)
-                coords = coords.reshape((-1, 2))
-                cv2.polylines(mask, [coords], False, color=id, thickness=thickness)
+                coords = np.asarray(list(line.coords), np.int32).reshape((-1, 2))
+                if len(coords) < 2:
+                    continue
+                if type == 'index':
+                    cv2.polylines(mask, [coords], False, color=id, thickness=thickness)
+                elif type == 'forward':
+                    cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-2] - coords[-1]), thickness=thickness)
+                    for i in range(len(coords) - 1):
+                        cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i + 1] - coords[i]), thickness=thickness)
+                elif type == 'backward':
+                    cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[0] - coords[1]), thickness=thickness)
+                    for i in range(1, len(coords)):
+                        cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i - 1] - coords[i]), thickness=thickness)
         else:
             id += 1
-            coords = np.asarray(list(lines.coords), np.int32)
-            coords = coords.reshape((-1, 2))
-            cv2.polylines(mask, [coords], False, color=id, thickness=thickness)
+            coords = np.asarray(list(lines.coords), np.int32).reshape((-1, 2))
+            if len(coords) < 2:
+                return mask, id
+            if type == 'index':
+                cv2.polylines(mask, [coords], False, color=id, thickness=thickness)
+            elif type == 'forward':
+                cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-2] - coords[-1]), thickness=thickness)
+                for i in range(len(coords)-1):
+                    cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i+1] - coords[i]), thickness=thickness)
+            elif type == 'backward':
+                cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[0] - coords[1]), thickness=thickness)
+                for i in range(1, len(coords)):
+                    cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i-1] - coords[i]), thickness=thickness)
+
         return mask, id
 
     @staticmethod
@@ -133,7 +157,8 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
                            local_box: Tuple[float, float, float, float],
                            layer_name: str,
                            canvas_size: Tuple[int, int],
-                           thickness):
+                           thickness,
+                           type):
         """
         Convert line inside patch to binary mask and return the map patch.
         :param layer_geom: list of LineStrings for each map layer
@@ -155,7 +180,7 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
         trans_x = -patch_x + patch_w / 2.0
         trans_y = -patch_y + patch_h / 2.0
 
-        map_mask = np.zeros(canvas_size, np.uint8)
+        map_mask = np.zeros(canvas_size)
 
         idx = 0
         for line in layer_geom:
@@ -165,7 +190,7 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
                                                      [1.0, 0.0, 0.0, 1.0, trans_x, trans_y])
                 new_line = affinity.scale(new_line, xfact=scale_width, yfact=scale_height, origin=(0, 0))
 
-                map_mask, idx = self.mask_for_lines(new_line, map_mask, idx, thickness=thickness)
+                map_mask, idx = self.mask_for_lines(new_line, map_mask, idx, thickness=thickness, type=type)
         return map_mask, idx
 
     def _layer_geom_to_mask(self,
@@ -173,11 +198,12 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
                             layer_geom: List[Geometry],
                             local_box: Tuple[float, float, float, float],
                             canvas_size: Tuple[int, int],
-                            thickness):
+                            thickness,
+                            type):
         if layer_name in ['ped_crossing_line']:
-            return self._line_geom_to_mask(layer_geom, local_box, layer_name, canvas_size, thickness)
+            return self._line_geom_to_mask(layer_geom, local_box, layer_name, canvas_size, thickness, type)
         elif layer_name in self.map_api.non_geometric_line_layers:
-            return self._line_geom_to_mask(layer_geom, local_box, layer_name, canvas_size, thickness)
+            return self._line_geom_to_mask(layer_geom, local_box, layer_name, canvas_size, thickness, type)
         elif layer_name in self.map_api.non_geometric_polygon_layers:
             return self._polygon_geom_to_mask(layer_geom, local_box, layer_name, canvas_size)
         else:
@@ -187,7 +213,8 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
                          map_geom: List[Tuple[str, List[Geometry]]],
                          local_box: Tuple[float, float, float, float],
                          canvas_size: Tuple[int, int],
-                         thickness):
+                         thickness,
+                         type):
         """
         Return list of map mask layers of the specified patch.
         :param map_geom: List of layer names and their corresponding geometries.
@@ -200,7 +227,7 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
         map_mask = []
         num_inst = []
         for layer_name, layer_geom in map_geom:
-            layer_mask, layer_inst = self._layer_geom_to_mask(layer_name, layer_geom, local_box, canvas_size, thickness)
+            layer_mask, layer_inst = self._layer_geom_to_mask(layer_name, layer_geom, local_box, canvas_size, thickness, type)
             if layer_mask is not None:
                 map_mask.append(layer_mask)
                 num_inst.append(layer_inst)
@@ -252,7 +279,8 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
                      patch_angle: float,
                      layer_names: List[str] = None,
                      canvas_size: Tuple[int, int] = (100, 100),
-                     thickness=5):
+                     thickness=5,
+                     type='index'):
         """
         Return list of map mask layers of the specified patch.
         :param patch_box: Patch box defined as [x_center, y_center, height, width]. If None, this plots the entire map.
@@ -293,13 +321,13 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
         # Convert geometry of each layer into mask and stack them into a numpy tensor.
         # Convert the patch box from global coordinates to local coordinates by setting the center to (0, 0).
         local_box = (0.0, 0.0, patch_box[2], patch_box[3])
-        map_mask, num_inst = self.map_geom_to_mask(map_geom, local_box, canvas_size, thickness=thickness)
+        map_mask, num_inst = self.map_geom_to_mask(map_geom, local_box, canvas_size, thickness=thickness, type=type)
         assert np.all(map_mask.shape[1:] == canvas_size)
 
         return map_mask, num_inst
 
 
-def gen_topdown_mask(nuscene, nusc_maps, sample_record, patch_size, canvas_size, seg_layers, thickness=5):
+def gen_topdown_mask(nuscene, nusc_maps, sample_record, patch_size, canvas_size, seg_layers, thickness=5, type='index'):
     sample_record_data = sample_record['data']
     sample_data_record = nuscene.get('sample_data', sample_record_data['LIDAR_TOP'])
 
@@ -313,17 +341,17 @@ def gen_topdown_mask(nuscene, nusc_maps, sample_record, patch_size, canvas_size,
     scene_record = nuscene.get('scene', sample_record['scene_token'])
     log_record = nuscene.get('log', scene_record['log_token'])
     location = log_record['location']
-    topdown_seg_mask, num_inst = nusc_maps[location].get_map_mask(patch_box, patch_angle, seg_layers, canvas_size, thickness=thickness)
+    topdown_seg_mask, num_inst = nusc_maps[location].get_map_mask(patch_box, patch_angle, seg_layers, canvas_size, thickness=thickness, type=type)
     # topdown_seg_mask = np.flip(topdown_seg_mask, 1)  # left-right correction
     return topdown_seg_mask, num_inst
 
 
-def extract_contour(topdown_seg_mask, canvas_size, thickness=5):
+def extract_contour(topdown_seg_mask, canvas_size, thickness=5, type='index'):
     topdown_seg_mask[topdown_seg_mask != 0] = 255
     ret, thresh = cv2.threshold(topdown_seg_mask, 127, 255, 0)
     contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    mask = np.zeros_like(topdown_seg_mask)
+    mask = np.zeros(topdown_seg_mask.shape)
     patch = box(1, 1, canvas_size[1] - 2, canvas_size[0] - 2)
     idx = 0
     for cnt in contours:
@@ -333,13 +361,37 @@ def extract_contour(topdown_seg_mask, canvas_size, thickness=5):
         line = line.intersection(patch)
         if isinstance(line, MultiLineString):
             line = ops.linemerge(line)
+        line = line.simplify(tolerance=1.)
 
         if isinstance(line, MultiLineString):
             for l in line:
                 idx += 1
-                cv2.polylines(mask, [np.asarray(list(l.coords), np.int32).reshape((-1, 2))], False, color=idx, thickness=thickness)
+                coords = np.asarray(list(l.coords), np.int32).reshape((-1, 2))
+                if len(coords) < 2:
+                    continue
+                if type == 'index':
+                    cv2.polylines(mask, [coords], False, color=idx, thickness=thickness)
+                elif type == 'forward':
+                    cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-2] - coords[-1]), thickness=thickness)
+                    for i in range(len(coords) - 1):
+                        cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i + 1] - coords[i]), thickness=thickness)
+                elif type == 'backward':
+                    cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[0] - coords[1]), thickness=thickness)
+                    for i in range(1, len(coords)):
+                        cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i - 1] - coords[i]), thickness=thickness)
         elif isinstance(line, LineString):
             idx += 1
-            cv2.polylines(mask, [np.asarray(list(line.coords), np.int32).reshape((-1, 2))], False, color=idx, thickness=thickness)
-
+            coords = np.asarray(list(line.coords), np.int32).reshape((-1, 2))
+            if len(coords) < 2:
+                continue
+            if type == 'index':
+                cv2.polylines(mask, [coords], False, color=idx, thickness=thickness)
+            elif type == 'forward':
+                cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-2] - coords[-1]), thickness=thickness)
+                for i in range(len(coords)-1):
+                    cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i+1] - coords[i]), thickness=thickness)
+            elif type == 'backward':
+                cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[0] - coords[1]), thickness=thickness)
+                for i in range(1, len(coords)):
+                    cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i-1] - coords[i]), thickness=thickness)
     return mask, idx
