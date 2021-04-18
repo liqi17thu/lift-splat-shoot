@@ -293,7 +293,7 @@ class NuscData(torch.utils.data.Dataset):
         forward_mask[2] = line_forward_mask[2]
         forward_mask[2][contour_thick_mask != 0] = 0
         forward_mask[1] = np.sum(line_forward_mask[:2], axis=0)
-        forward_mask[1][(contour_forward_mask[2] != 0) | (contour_thick_mask != 0)] = 0
+        forward_mask[1][(forward_mask[2] != 0) | (contour_thick_mask != 0)] = 0
         forward_mask = forward_mask.sum(0)
 
         line_backward_mask, _ = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness, type='backward')
@@ -303,12 +303,13 @@ class NuscData(torch.utils.data.Dataset):
         backward_mask[2] = line_backward_mask[2]
         backward_mask[2][contour_thick_mask != 0] = 0
         backward_mask[1] = np.sum(line_backward_mask[:2], axis=0)
-        backward_mask[1][(contour_backward_mask[2] != 0) | (contour_thick_mask != 0)] = 0
+        backward_mask[1][(backward_mask[2] != 0) | (contour_thick_mask != 0)] = 0
         backward_mask = backward_mask.sum(0)
 
-        forward_mask = label_onehot_encoding(forward_mask, 361)
-        backward_mask = label_onehot_encoding(backward_mask, 361)
-        direction_mask = forward_mask & backward_mask
+        forward_mask = label_onehot_encoding(torch.tensor(forward_mask), 361)
+        backward_mask = label_onehot_encoding(torch.tensor(backward_mask), 361)
+        direction_mask = forward_mask
+        direction_mask[backward_mask != 0] = 1.
 
         return torch.Tensor(seg_mask), torch.Tensor(inst_mask), torch.Tensor(direction_mask)
 
@@ -352,14 +353,14 @@ class SegmentationData(NuscData):
 
         cams = self.choose_cams()
         imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll = self.get_image_data(rec, cams)
-        seg_mask, inst_mask = self.get_lineimg(rec)
+        seg_mask, inst_mask, direction_mask = self.get_lineimg(rec)
         lidar_data = self.get_lidar_data(rec, nsweeps=3)
         lidar_data = lidar_data.transpose(1, 0)
         num_points = lidar_data.shape[0]
         lidar_data = pad_or_trim_to_np(lidar_data, [81920, 5]).astype('float32')
         lidar_mask = np.ones(81920).astype('float32')
         lidar_mask[num_points:] *= 0.0
-        return lidar_data, lidar_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, seg_mask, inst_mask
+        return lidar_data, lidar_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, seg_mask, inst_mask, direction_mask
 
 
 class TemporalSegmentationData(NuscData):
