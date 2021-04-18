@@ -20,7 +20,7 @@ from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss, SimpleLoss, DiscriminativeLoss
 from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet, TemporalVPNet
-from .vit_model import VITNet
+# from .vit_model import VITNet
 from .pointpillar import PointPillar
 from .ori_vpn import VPNModel
 
@@ -60,7 +60,7 @@ def train(version='mini',
           preprocess=False,
 
           H=900, W=1600,
-          final_dim=(256, 704),
+          final_dim=(128, 352),
           ncams=6,
           line_width=5,
           max_grad_norm=5.0,
