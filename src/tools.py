@@ -526,7 +526,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn,
             var_loss, dist_loss, reg_loss = var_loss.item() * bs, dist_loss.item() * bs, reg_loss.item() * bs
             direction_loss = direction_loss_fn(direction, direction_mask)
             lane_mask = (1 - direction_mask[:, 0]).unsqueeze(1)
-            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * 361)
+            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * 361 + 1e-6)
             final_loss = seg_loss * scale_seg + var_loss + scale_var + dist_loss * scale_dist + direction_loss * 0.1
 
             total_seg_loss += seg_loss

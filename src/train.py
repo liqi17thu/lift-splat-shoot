@@ -195,7 +195,7 @@ def train(version='mini',
             var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask)
             direction_loss = direction_loss_fn(direction, direction_mask)
             lane_mask = (1 - direction_mask[:, 0]).unsqueeze(1)
-            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * 361)
+            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * 361 + 1e-6)
             final_loss = seg_loss * scale_seg + var_loss * scale_var + dist_loss * scale_dist + direction_loss
             final_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
