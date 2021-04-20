@@ -902,6 +902,8 @@ def viz_model_preds_inst(version,
                     )
             origin_out = out
             out = out.softmax(1).cpu()
+            _, direction = torch.topk(direction_mask, 2, dim=1)
+            direction = direction.permute(0, 2, 3, 1).cpu()
 
             preds = onehot_encoding(out).cpu().numpy()
             embedded = embedded.cpu()
@@ -949,7 +951,7 @@ def viz_model_preds_inst(version,
                         lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
 
                         lane_coordinate = np.stack(lane_coordinate)
-                        lane_coordinate = connect_by_direction(lane_coordinate, direction)
+                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si])
                         simplified_coords.append(lane_coordinate)
 
                     inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count

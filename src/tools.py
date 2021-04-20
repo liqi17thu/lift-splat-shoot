@@ -793,7 +793,7 @@ def sort_points_by_dist(coords):
 def greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted_indices, sorted_points, taken_direction, num_points, threshold):
     while True:
         last_idx = sorted_indices[-1]
-        last_point = tuple(sorted_points[-1])
+        last_point = tuple(np.flip(sorted_points[-1]))
         if not taken_direction[last_point][0]:
             direction = direction_mask[last_point][0]
             taken_direction[last_point][0] = True
@@ -816,9 +816,9 @@ def greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted
         if dist_metric[idx] > threshold:
             continue
         inverse_deg = (180 + deg) % 360
-        target_direction = (direction_mask[tuple(coords[idx])] - 1) * 10
+        target_direction = (direction_mask[tuple(np.flip(coords[idx]))] - 1) * 10
         taken = np.argmin(np.abs(target_direction - inverse_deg) % 180)
-        taken_direction[tuple(coords[idx])][taken] = True
+        taken_direction[tuple(np.flip(coords[idx]))][taken] = True
 
         sorted_points.append(coords[idx])
         sorted_indices.append(idx)
