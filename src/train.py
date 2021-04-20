@@ -20,7 +20,7 @@ from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss, SimpleLoss, DiscriminativeLoss
 from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet, TemporalVPNet
-from .vit_model import VITNet
+# from .vit_model import VITNet
 from .pointpillar import PointPillar
 from .ori_vpn import VPNModel
 
@@ -194,8 +194,8 @@ def train(version='mini',
             seg_loss = loss_fn(preds, binimgs)
             var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask)
             direction_loss = direction_loss_fn(direction, direction_mask)
-            lane_mask = ~direction_mask[:, 0]
-            direction_loss = (direction_loss * lane_mask).mean()
+            lane_mask = (1 - direction_mask[:, 0]).unsqueeze(1)
+            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * 361 + 1e-6)
             final_loss = seg_loss * scale_seg + var_loss * scale_var + dist_loss * scale_dist + direction_loss
             final_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
@@ -209,6 +209,7 @@ def train(version='mini',
                 writer.add_scalar('train/var_loss', var_loss, counter)
                 writer.add_scalar('train/dist_loss', dist_loss, counter)
                 writer.add_scalar('train/reg_loss', reg_loss, counter)
+                writer.add_scalar('train/direction_loss', direction_loss, counter)
                 writer.add_scalar('train/final_loss', final_loss, counter)
 
             if counter % 50 == 0 and local_rank == 0:
@@ -218,13 +219,14 @@ def train(version='mini',
                 writer.add_scalar('train/step_time', t1 - t0, counter)
 
             if counter % val_step == 0:
-                val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, scale_seg, scale_var, scale_dist)
+                val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn, scale_seg, scale_var, scale_dist)
                 if local_rank == 0:
                     print('VAL', val_info)
                     writer.add_scalar('val/seg_loss', val_info['seg_loss'], counter)
                     writer.add_scalar('val/var_loss', val_info['var_loss'], counter)
                     writer.add_scalar('val/dist_loss', val_info['dist_loss'], counter)
                     writer.add_scalar('val/reg_loss', val_info['reg_loss'], counter)
+                    writer.add_scalar('val/direction_loss', val_info['direction_loss'], counter)
                     writer.add_scalar('val/final_loss', val_info['final_loss'], counter)
                     write_log(writer, val_info['iou'], val_info['accuracy'], val_info['precision'], val_info['recall'], 'val', counter)
 

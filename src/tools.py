@@ -490,6 +490,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn,
     total_reg_loss = 0.0
     total_dist_loss = 0.0
     total_var_loss = 0.0
+    total_direction_loss = 0.0
     total_final_loss = 0.0
     total_CD1 = None
     total_CD2 = None
@@ -524,14 +525,15 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn,
             var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask.sum(1))
             var_loss, dist_loss, reg_loss = var_loss.item() * bs, dist_loss.item() * bs, reg_loss.item() * bs
             direction_loss = direction_loss_fn(direction, direction_mask)
-            lane_mask = ~direction_mask[:, 0]
-            direction_loss = (direction_loss * lane_mask).mean() * bs
-            final_loss = seg_loss * scale_seg + var_loss + scale_var + dist_loss * scale_dist + direction_loss
+            lane_mask = (1 - direction_mask[:, 0]).unsqueeze(1)
+            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * 361 + 1e-6)
+            final_loss = seg_loss * scale_seg + var_loss + scale_var + dist_loss * scale_dist + direction_loss * 0.1
 
             total_seg_loss += seg_loss
             total_reg_loss += reg_loss
             total_dist_loss += dist_loss
             total_var_loss += var_loss
+            total_direction_loss += direction_loss
             total_final_loss += final_loss
 
             # iou
@@ -600,6 +602,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn,
         'reg_loss': total_reg_loss / len(valloader.dataset),
         'dist_loss': total_dist_loss / len(valloader.dataset),
         'var_loss': total_var_loss / len(valloader.dataset),
+        'direction_loss': total_dist_loss / len(valloader.dataset),
         'final_loss': total_final_loss / len(valloader.dataset),
         'iou': total_intersect / total_union,
         'accuracy': total_cor / total_pix,
@@ -705,7 +708,7 @@ def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx, alpha_poly=0.6, alpha
 
 def get_discrete_degree(vec):
     deg = np.mod(np.degrees(np.arctan2(vec[1], vec[0])), 360)
-    return int(deg + 0.5) + 1
+    return (int(deg + 0.5) % 360) + 1
 
 
 def get_local_map(nmap, center, stretch, layer_names, line_names):
