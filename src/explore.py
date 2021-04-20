@@ -870,6 +870,10 @@ def viz_model_preds_inst(version,
 
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
+    max_pool_1 = nn.MaxPool2d((1, 5), padding=(0, 2), stride=1)
+    avg_pool_1 = nn.AvgPool2d((9, 5), padding=(4, 2), stride=1)
+    max_pool_2 = nn.MaxPool2d((5, 1), padding=(2, 0), stride=1)
+    avg_pool_2 = nn.AvgPool2d((5, 9), padding=(2, 4), stride=1)
     post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
     pca = PCA(n_components=3)
 
@@ -942,17 +946,43 @@ def viz_model_preds_inst(version,
 
                     prob = origin_out[si][i]
                     prob[single_class_inst_mask == 0] = 0
+                    nms_mask_1 = ((max_pool_1(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
+                    avg_mask_1 = avg_pool_1(prob.unsqueeze(0))[0].cpu().numpy()
+                    nms_mask_2 = ((max_pool_2(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
+                    avg_mask_2 = avg_pool_2(prob.unsqueeze(0))[0].cpu().numpy()
+                    vertical_mask = avg_mask_1 > avg_mask_2
+                    horizontal_mask = ~vertical_mask
+                    nms_mask = (vertical_mask & nms_mask_1) | (horizontal_mask & nms_mask_2)
 
                     for j in range(1, num_inst+1):
-                        idx = np.where(single_class_inst_mask == j)
+                        idx = np.where(nms_mask & (single_class_inst_mask == j))
+                        full_idx = np.where((single_class_inst_mask == j))
                         if len(idx[0]) == 0:
                             continue
 
                         lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
+                        full_lane_coord = np.vstack((full_idx[1], full_idx[0])).transpose()
 
-                        lane_coordinate = np.stack(lane_coordinate)
-                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si])
-                        simplified_coords.append(lane_coordinate)
+                        range_0 = np.max(lane_coordinate[:, 0]) - np.min(lane_coordinate[:, 0])
+                        range_1 = np.max(lane_coordinate[:, 1]) - np.min(lane_coordinate[:, 1])
+                        if range_0 > range_1:
+                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[0])
+                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[0])
+                            if full_lane_coord[0][0] < nx[0] - full_lane_coord[-1][0]:
+                                full_lane_coord.insert(0, lane_coordinate[0])
+                            else:
+                                full_lane_coord.insert(0, lane_coordinate[-1])
+                        else:
+                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[1])
+                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[1])
+                            if full_lane_coord[0][1] < nx[1] - full_lane_coord[-1][1]:
+                                full_lane_coord.insert(0, lane_coordinate[0])
+                            else:
+                                full_lane_coord.insert(0, lane_coordinate[-1])
+
+                        full_lane_coord = np.stack(full_lane_coord)
+                        full_lane_coord = connect_by_direction(full_lane_coord, direction[si])
+                        simplified_coords.append(full_lane_coord)
 
                     inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
                     count += num_inst
