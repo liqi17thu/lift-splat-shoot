@@ -770,7 +770,7 @@ def viz_model_preds_class3(version,
                 counter += 1
 
 
-
+from .tools import connect_by_direction
 
 def viz_model_preds_inst(version,
                             modelf,
@@ -826,7 +826,7 @@ def viz_model_preds_inst(version,
     else:
         parser_name = 'segmentationdata'
 
-    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
+    [trainloader, valloader], [_, _] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
                                           parser_name=parser_name, distributed=False)
     loader = trainloader if viz_train else valloader
@@ -865,17 +865,11 @@ def viz_model_preds_inst(version,
 
     val = 0.01
     fH, fW = final_dim
-    # fH, fW = 300, 400
-    # plt.figure(figsize=(3*fW*val, (4.5*fW + 2*fH)*val))
-    # gs = mpl.gridspec.GridSpec(5, 3, height_ratios=(fH, fH, 1.5*fW, 1.5*fW, 1.5*fW))
     plt.figure(figsize=(3*fW*val, (3*fW)*val))
     gs = mpl.gridspec.GridSpec(2, 3, height_ratios=(1.5*fW, 1.5*fW))
 
-    # gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(fH, fH, 1.5*fW))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
-    max_pool_1 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
-    max_pool_2 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
     post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
     pca = PCA(n_components=3)
 
@@ -890,14 +884,11 @@ def viz_model_preds_inst(version,
     # counter = 44
     # counter = 0
     with torch.no_grad():
-        for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(loader):
+        for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label, direction_mask) in enumerate(loader):
             if batchi < 18:
-            # if batchi < 11:
-            # if batchi < 301:
                 continue
 
-
-            out, embedded = model(
+            out, embedded, direction = model(
                     points.cuda(),
                     points_mask.cuda(),
                     imgs.to(device),
@@ -911,11 +902,9 @@ def viz_model_preds_inst(version,
                     )
             origin_out = out
             out = out.softmax(1).cpu()
-            pred_prob_mask = 1 - out[:, 0]
 
             preds = onehot_encoding(out).cpu().numpy()
             embedded = embedded.cpu()
-            inst_label = inst_label.sum(1)
 
             N, C, H, W = embedded.shape
             embedded_test = embedded.permute(0, 2, 3, 1).reshape(N*H*W, C)
@@ -923,7 +912,6 @@ def viz_model_preds_inst(version,
             embedded_fitted = torch.sigmoid(torch.tensor(embedded_fitted)).numpy()
             embedded_fitted = embedded_fitted.reshape((N, H, W, 3))
             alpha_channel = np.ones((N, H, W, 1))
-            embedded_fitted = np.concatenate([embedded_fitted, alpha_channel], axis=-1)
 
             if temporal:
                 imgs = imgs[:, 0]
@@ -932,58 +920,13 @@ def viz_model_preds_inst(version,
             seg_mask = out.numpy()
             seg_mask[seg_mask < 0.1] = np.nan
 
-            # for si in range(imgs.shape[0]):
-            #     plt.clf()
-            #     for imgi, img in enumerate(imgs[si]):
-            #         ax = plt.subplot(gs[imgi // 3, imgi % 3])
-            #         showimg = denormalize_img(img)
-            #         # flip the bottom images
-            #         if imgi > 2:
-            #             showimg = showimg.transpose(Image.FLIP_LEFT_RIGHT)
-            #         plt.imshow(showimg)
-            #         plt.axis('off')
-            #         plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.05), xycoords='axes fraction', color='white')
-
-            #     ax = plt.subplot(gs[2, :])
-            #     ax.get_xaxis().set_ticks([])
-            #     ax.get_yaxis().set_ticks([])
-            #     rec = loader.dataset.ixes[counter]
-            #     # plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-            #     # plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-            #     # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
-            #     # plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-            #     # plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-            #     # plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
-            #     plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
-            #     plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
-            #     plt.xlim((0, binimgs.shape[3]))
-            #     plt.ylim((0, binimgs.shape[2]))
-
-            #     imname = f'gt{batchi:06}_{si:03}.jpg'
-            #     print('saving', imname)
-            #     plt.savefig(imname)
-            #     # plt.savefig(imname, dpi=800)
-            #     counter += 1
-            # continue
-
             for si in range(imgs.shape[0]):
                 plt.clf()
-            #     for imgi, img in enumerate(imgs[si]):
-            #         ax = plt.subplot(gs[imgi // 3, imgi % 3])
-            #         showimg = denormalize_img(img)
-            #         # flip the bottom images
-            #         if imgi > 2:
-            #             showimg = showimg.transpose(Image.FLIP_LEFT_RIGHT)
-            #         plt.imshow(showimg)
-            #         plt.axis('off')
-            #         plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.05), xycoords='axes fraction', color='white')
 
                 inst_mask = np.zeros((200, 400), dtype='int32')
                 inst_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
 
                 simplified_coords = []
-                # simplified_mask = np.zeros((200, 400), dtype='int32')
-                # simplified_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
 
                 count = 0
                 for i in range(1, preds.shape[1]):
@@ -997,36 +940,17 @@ def viz_model_preds_inst(version,
 
                     prob = origin_out[si][i]
                     prob[single_class_inst_mask == 0] = 0
-                    max_pooled_1 = max_pool_1(prob.unsqueeze(0))[0]
-                    max_pooled_2 = max_pool_2(prob.unsqueeze(0))[0]
-                    nms_mask_1 = ((max_pooled_1 - prob) < 1e-1).cpu().numpy()
-                    nms_mask_2 = ((max_pooled_2 - prob) < 1e-1).cpu().numpy()
-                    nms_mask = nms_mask_1 | nms_mask_2
 
                     for j in range(1, num_inst+1):
-                        idx = np.where(nms_mask & (single_class_inst_mask == j))
-                        full_idx = np.where((single_class_inst_mask == j))
+                        idx = np.where(single_class_inst_mask == j)
                         if len(idx[0]) == 0:
                             continue
 
                         lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
-                        full_lane_coord = np.vstack((full_idx[1], full_idx[0])).transpose()
 
-                        range_0 = np.max(lane_coordinate[:, 0]) - np.min(lane_coordinate[:, 0])
-                        range_1 = np.max(lane_coordinate[:, 1]) - np.min(lane_coordinate[:, 1])
-                        if range_0 > range_1:
-                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[0])
-                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[0])
-                        else:
-                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[1])
-                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[1])
-
-                        lane_coordinate.insert(0, full_lane_coord[0])
-                        lane_coordinate.insert(-1, full_lane_coord[-1])
                         lane_coordinate = np.stack(lane_coordinate)
-                        lane_coordinate = sort_points_by_dist(lane_coordinate)
+                        lane_coordinate = connect_by_direction(lane_coordinate, direction)
                         simplified_coords.append(lane_coordinate)
-                        # simplified_mask = cv2.polylines(simplified_mask, [lane_coordinate], False, color=count+j, thickness=1)
 
                     inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
                     count += num_inst
@@ -1038,57 +962,22 @@ def viz_model_preds_inst(version,
                 ax = plt.subplot(gs[0, :])
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
-                # plt.setp(ax.spines.values(), color='black', linewidth=2)
-                # plt.setp(ax.spines.values(), linewidth=0)
-
-                # plt.legend(handles=[
-                #     # mpatches.Patch(color=(0.4, 0, 0, 0.6), label='Border'),
-                #     # mpatches.Patch(color=(0, 0.4, 0, 0.6), label='Divider'),
-                #     # mpatches.Patch(color=(0, 0, 0.4, 0.6), label='Ped Crossing'),
-                #     mpatches.Patch(color='#709178', label='Road Boundary'),
-                #     mpatches.Patch(color='#708fa7', label='Road Divider'),
-                #     mpatches.Patch(color='#9f7883', label='Ped Crossing'),
-                # ], loc=(0.01, 0.80), prop={'size': 15})
 
                 plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
-                # plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-                # plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-                # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
-
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
-                # plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
                 plt.xlim((0, binimgs.shape[3]))
                 plt.ylim((0, binimgs.shape[2]))
-                # add_ego(bx, dx)
                 plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
                 plt.setp(ax.spines.values(), linewidth=0)
-                # ax.axhline(y=0.002, c="black", linewidth=3, zorder=0)
-
-
-                # ax = plt.subplot(gs[1, :])
-                # ax.get_xaxis().set_ticks([])
-                # ax.get_yaxis().set_ticks([])
-                # # plt.setp(ax.spines.values(), color='b', linewidth=2)
-                # embedded_fitted[si, ..., 3] = pred_prob_mask[si]
-                # plt.imshow(embedded_fitted[si])
-                # plt.xlim((0, binimgs.shape[3]))
-                # plt.ylim((0, binimgs.shape[2]))
-                # # add_ego(bx, dx)
-                # # plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
-                # plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
 
                 ax = plt.subplot(gs[1, :])
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
-                # plt.setp(ax.spines.values(), color='b', linewidth=2)
-                # plt.setp(ax.spines.values(), color='black', linewidth=2)
                 plt.setp(ax.spines.values(), linewidth=0)
-                # plt.imshow(inst_mask_pil)
-                # plt.imshow(simplified_mask_pil)
                 for coord in simplified_coords:
                     plt.plot(coord[:, 0], coord[:, 1], linewidth=5)
 
@@ -1099,7 +988,6 @@ def viz_model_preds_inst(version,
                 imname = f'eval{batchi:06}_{si:03}.jpg'
                 print('saving', imname)
                 plt.savefig(imname)
-                # plt.savefig(imname, dpi=800)
                 counter += 1
 
 

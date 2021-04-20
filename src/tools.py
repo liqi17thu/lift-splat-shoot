@@ -767,7 +767,7 @@ def sort_points_by_dist(coords):
     # x_range = np.max(np.abs(diff_matrix[..., 0]))
     # y_range = np.max(np.abs(diff_matrix[..., 1]))
     # diff_matrix[..., 1] *= x_range / y_range
-    dist_matrix = np.sqrt(((diff_matrix) ** 2).sum(-1))
+    dist_matrix = np.sqrt((diff_matrix ** 2).sum(-1))
     direction_matrix = diff_matrix / (dist_matrix.reshape(num_points, num_points, 1) + 1e-6)
 
     sorted_points = [coords[0]]
@@ -786,3 +786,75 @@ def sort_points_by_dist(coords):
 
     return np.stack(sorted_points, 0)
 
+
+def greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted_indices, sorted_points, taken_direction, num_points, threshold):
+    while True:
+        last_idx = sorted_indices[-1]
+        last_point = tuple(sorted_points[-1])
+        if not taken_direction[last_point][0]:
+            direction = direction_mask[last_point][0]
+            taken_direction[last_point][0] = True
+        elif not taken_direction[last_point][1]:
+            direction = direction_mask[last_point][1]
+            taken_direction[last_point][1] = True
+        else:
+            break
+
+        if direction == 0:
+            continue
+        deg = (direction - 1) * 10
+        unit_vector = [np.cos(np.deg2rad(deg)), np.sin(np.deg2rad(deg))]
+        direct_cos = np.dot(direction_matrix[last_idx], unit_vector)
+        direct_cos[direct_cos < 0] = 0
+        direct_multiplier = 1 / (direct_cos + 1e-6)
+        dist = dist_matrix[last_idx]
+        dist_metric = direct_multiplier * dist
+        idx = np.argmin(dist_metric) % num_points
+        if dist_metric[idx] > threshold:
+            continue
+        inverse_deg = (180 + deg) % 360
+        target_direction = (direction_mask[tuple(coords[idx])] - 1) * 10
+        taken = np.argmin(np.abs(target_direction - inverse_deg) % 180)
+        taken_direction[tuple(coords[idx])][taken] = True
+
+        sorted_points.append(coords[idx])
+        sorted_indices.append(idx)
+        dist_matrix[:, idx] = np.inf
+        direction_matrix[:, idx] = (0, 0)
+
+
+def connect_by_direction(coords, direction_mask, threshold=100):
+    num_points = coords.shape[0]
+    float_coords = coords.astype('float')
+    diff_matrix = np.repeat(float_coords[:, None], num_points, 1) - float_coords
+    dist_matrix = np.sqrt((diff_matrix ** 2).sum(-1))
+    direction_matrix = diff_matrix / (dist_matrix.reshape(num_points, num_points, 1) + 1e-6)
+
+    sorted_points = [coords[0]]
+    sorted_indices = [0]
+    dist_matrix[:, 0] = np.inf
+    direction_matrix[:, 0] = (0, 0)
+    taken_direction = np.zeros_like(direction_mask, dtype=np.bool)
+
+    greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted_indices, sorted_points,
+                   taken_direction, num_points, threshold)
+    sorted_points.reverse()
+    sorted_indices.reverse()
+    greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted_indices, sorted_points,
+                   taken_direction, num_points, threshold)
+
+    return np.stack(sorted_points, 0)
+
+
+def test_function():
+    H = 200
+    W = 400
+    num_points = 20
+    coords = np.stack([np.random.randint(0, H, size=(num_points)), np.random.randint(0, W, size=(num_points))], -1)
+    direction_mask = np.random.randint(0, 361, size=(H, W, 2))
+    sorted_points = connect_by_direction(coords, direction_mask)
+    print(sorted_points)
+
+
+if __name__ == '__main__':
+    test_function()
