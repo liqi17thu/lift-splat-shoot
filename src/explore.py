@@ -905,8 +905,12 @@ def viz_model_preds_inst(version,
                     yaw_pitch_roll.to(device),
                     )
             origin_out = out
+            # origin_out = binimgs
             out = out.softmax(1).cpu()
-            _, direction = torch.topk(direction_mask, 2, dim=1)
+            _, direction_mask = torch.topk(direction_mask, 2, dim=1)
+            direction_mask = direction_mask.cpu()
+
+            _, direction = torch.topk(direction, 2, dim=1)
             direction = direction.permute(0, 2, 3, 1).cpu()
 
             preds = onehot_encoding(out).cpu().numpy()
@@ -929,8 +933,8 @@ def viz_model_preds_inst(version,
             for si in range(imgs.shape[0]):
                 plt.clf()
 
-                inst_mask = np.zeros((200, 400), dtype='int32')
-                inst_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
+                # inst_mask = np.zeros((200, 400), dtype='int32')
+                # inst_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
 
                 simplified_coords = []
 
@@ -943,6 +947,9 @@ def viz_model_preds_inst(version,
                         continue
 
                     num_inst = len(single_class_inst_coords)
+                    # GT
+                    # single_class_inst_mask = inst_label[si][i].int().numpy()
+                    # num_inst = np.max(single_class_inst_mask)
 
                     prob = origin_out[si][i]
                     prob[single_class_inst_mask == 0] = 0
@@ -955,16 +962,16 @@ def viz_model_preds_inst(version,
                     nms_mask = (vertical_mask & nms_mask_1) | (horizontal_mask & nms_mask_2)
 
                     for j in range(1, num_inst+1):
-                        idx = np.where(nms_mask & (single_class_inst_mask == j))
                         full_idx = np.where((single_class_inst_mask == j))
-                        if len(idx[0]) == 0:
-                            continue
-
-                        lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
                         full_lane_coord = np.vstack((full_idx[1], full_idx[0])).transpose()
 
-                        range_0 = np.max(lane_coordinate[:, 0]) - np.min(lane_coordinate[:, 0])
-                        range_1 = np.max(lane_coordinate[:, 1]) - np.min(lane_coordinate[:, 1])
+                        idx = np.where(nms_mask & (single_class_inst_mask == j))
+                        if len(idx[0]) == 0:
+                            continue
+                        lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
+
+                        range_0 = np.max(full_lane_coord[:, 0]) - np.min(full_lane_coord[:, 0])
+                        range_1 = np.max(full_lane_coord[:, 1]) - np.min(full_lane_coord[:, 1])
                         if range_0 > range_1:
                             lane_coordinate = sorted(lane_coordinate, key=lambda x: x[0])
                             full_lane_coord = sorted(full_lane_coord, key=lambda x: x[0])
@@ -981,23 +988,26 @@ def viz_model_preds_inst(version,
                                 full_lane_coord.insert(0, lane_coordinate[-1])
 
                         full_lane_coord = np.stack(full_lane_coord)
+                        idx = np.where((full_lane_coord == full_lane_coord[0]).all(-1))[0][-1]
+                        full_lane_coord = np.concatenate([full_lane_coord[:idx], full_lane_coord[idx+1:]])
                         full_lane_coord = connect_by_direction(full_lane_coord, direction[si])
                         simplified_coords.append(full_lane_coord)
 
-                    inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
+                    # inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
                     count += num_inst
 
-                for i in range(1, count+1):
-                    inst_mask_pil[inst_mask == i, :3] = color_map[i]
-                    inst_mask_pil[inst_mask == i, 3] = 150
+                # for i in range(1, count+1):
+                #     inst_mask_pil[inst_mask == i, :3] = color_map[i]
+                #     inst_mask_pil[inst_mask == i, 3] = 150
 
                 ax = plt.subplot(gs[0, :])
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
 
-                plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-                plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-                plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+                plt.imshow(direction_mask[si, 0], alpha=0.6)
+                # plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                # plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                # plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
@@ -1136,7 +1146,7 @@ def gen_pred_pc(version,
                     translation.to(device),
                     yaw_pitch_roll.to(device),
                     )
-            origin_out = out
+            origin_out = binimgs
             out = out.softmax(1).cpu()
 
             preds = onehot_encoding(out).cpu().numpy()
@@ -1155,6 +1165,7 @@ def gen_pred_pc(version,
                     single_class_inst_mask, single_class_inst_coords = post_processor.postprocess(single_mask, single_embedded)
                     if single_class_inst_mask is None:
                         continue
+
 
                     num_inst = len(single_class_inst_coords)
 

@@ -805,7 +805,7 @@ def greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted
 
         if direction == 0:
             continue
-        deg = (direction - 1) * 10
+        deg = direction - 1
         unit_vector = [np.cos(np.deg2rad(deg)), np.sin(np.deg2rad(deg))]
         direct_cos = np.dot(direction_matrix[last_idx], unit_vector)
         direct_cos[direct_cos < 0] = 0
@@ -816,8 +816,10 @@ def greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted
         if dist_metric[idx] > threshold:
             continue
         inverse_deg = (180 + deg) % 360
-        target_direction = (direction_mask[tuple(np.flip(coords[idx]))] - 1) * 10
-        taken = np.argmin(np.abs(target_direction - inverse_deg) % 180)
+        target_direction = (direction_mask[tuple(np.flip(coords[idx]))] - 1)
+        tmp = np.abs(target_direction - inverse_deg)
+        tmp = torch.min(tmp, 360 - tmp)
+        taken = np.argmin(tmp)
         taken_direction[tuple(np.flip(coords[idx]))][taken] = True
 
         sorted_points.append(coords[idx])
@@ -826,7 +828,7 @@ def greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted
         direction_matrix[:, idx] = (0, 0)
 
 
-def connect_by_direction(coords, direction_mask, threshold=100):
+def connect_by_direction(coords, direction_mask, threshold=1000):
     num_points = coords.shape[0]
     float_coords = coords.astype('float')
     diff_matrix = np.repeat(float_coords[:, None], num_points, 1) - float_coords
