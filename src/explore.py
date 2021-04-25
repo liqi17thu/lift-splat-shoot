@@ -788,7 +788,7 @@ def viz_model_preds_inst(version,
                             # final_dim=(300, 400),
                             bot_pct_lim=(0.0, 0.22),
                             rot_lim=(-5.4, 5.4),
-                            line_width=2,
+                            line_width=5,
                             rand_flip=True,
 
                             xbound=[-30.0, 30.0, 0.15],
@@ -907,11 +907,12 @@ def viz_model_preds_inst(version,
             origin_out = out
             # origin_out = binimgs
             out = out.softmax(1).cpu()
+            _, direction = torch.topk(direction, 2, dim=1)
+            # _, direction = torch.topk(direction_mask, 2, dim=1)
+            direction = direction.permute(0, 2, 3, 1).cpu()
+
             _, direction_mask = torch.topk(direction_mask, 2, dim=1)
             direction_mask = direction_mask.cpu()
-
-            _, direction = torch.topk(direction, 2, dim=1)
-            direction = direction.permute(0, 2, 3, 1).cpu()
 
             preds = onehot_encoding(out).cpu().numpy()
             embedded = embedded.cpu()
@@ -988,10 +989,12 @@ def viz_model_preds_inst(version,
                                 full_lane_coord.insert(0, lane_coordinate[-1])
 
                         full_lane_coord = np.stack(full_lane_coord)
+                        lane_coordinate = np.stack(lane_coordinate)
                         idx = np.where((full_lane_coord == full_lane_coord[0]).all(-1))[0][-1]
                         full_lane_coord = np.concatenate([full_lane_coord[:idx], full_lane_coord[idx+1:]])
-                        full_lane_coord = connect_by_direction(full_lane_coord, direction[si])
-                        simplified_coords.append(full_lane_coord)
+                        lane_coordinate = connect_by_direction(full_lane_coord, direction[si])
+                        # lane_coordinate = sort_points_by_dist(lane_coordinate)
+                        simplified_coords.append(lane_coordinate)
 
                     # inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
                     count += num_inst
@@ -1004,10 +1007,11 @@ def viz_model_preds_inst(version,
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
 
-                plt.imshow(direction_mask[si, 0], alpha=0.6)
-                # plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-                # plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-                # plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+                # plt.imshow(direction[si, ..., 0], alpha=0.6)
+                # plt.imshow(direction_mask[si, 0], alpha=0.6)
+                plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]

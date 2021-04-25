@@ -524,10 +524,10 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn,
             seg_loss = loss_fn(preds, binimgs).item() * bs
             var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask.sum(1))
             var_loss, dist_loss, reg_loss = var_loss.item() * bs, dist_loss.item() * bs, reg_loss.item() * bs
-            direction_loss = direction_loss_fn(direction, direction_mask)
+            direction_loss = direction_loss_fn(torch.softmax(direction, 1), direction_mask)
             lane_mask = (1 - direction_mask[:, 0]).unsqueeze(1)
             direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * 361 + 1e-6)
-            final_loss = seg_loss * scale_seg + var_loss + scale_var + dist_loss * scale_dist + direction_loss * 0.1
+            final_loss = seg_loss * scale_seg + var_loss + scale_var + dist_loss * scale_dist + direction_loss * 0.2
 
             total_seg_loss += seg_loss
             total_reg_loss += reg_loss
@@ -763,6 +763,8 @@ def get_local_map(nmap, center, stretch, layer_names, line_names):
 
     return polys
 
+from copy import deepcopy
+
 def sort_points_by_dist(coords):
     coords = coords.astype('float')
     num_points = coords.shape[0]
@@ -770,22 +772,29 @@ def sort_points_by_dist(coords):
     # x_range = np.max(np.abs(diff_matrix[..., 0]))
     # y_range = np.max(np.abs(diff_matrix[..., 1]))
     # diff_matrix[..., 1] *= x_range / y_range
-    dist_matrix = np.sqrt((diff_matrix ** 2).sum(-1))
+    dist_matrix = np.sqrt(((diff_matrix) ** 2).sum(-1))
+    dist_matrix_full = deepcopy(dist_matrix)
     direction_matrix = diff_matrix / (dist_matrix.reshape(num_points, num_points, 1) + 1e-6)
 
     sorted_points = [coords[0]]
     sorted_indices = [0]
     dist_matrix[:, 0] = np.inf
 
-    last_direction = (0, 0)
+    last_direction = np.array([0, 0])
     for i in range(num_points - 1):
         last_idx = sorted_indices[-1]
         dist_metric = dist_matrix[last_idx] - 0 * (last_direction * direction_matrix[last_idx]).sum(-1)
         idx = np.argmin(dist_metric) % num_points
+        new_direction = direction_matrix[last_idx, idx]
+        if dist_metric[idx] > 3 and min(dist_matrix_full[idx][sorted_indices]) < 5:
+            dist_matrix[:, idx] = np.inf
+            continue
+        if dist_metric[idx] > 10 and i > num_points * 0.9:
+            break
         sorted_points.append(coords[idx])
         sorted_indices.append(idx)
         dist_matrix[:, idx] = np.inf
-        last_direction = direction_matrix[last_idx, idx]
+        last_direction = new_direction
 
     return np.stack(sorted_points, 0)
 
@@ -809,7 +818,7 @@ def greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted
         unit_vector = [np.cos(np.deg2rad(deg)), np.sin(np.deg2rad(deg))]
         direct_cos = np.dot(direction_matrix[last_idx], unit_vector)
         direct_cos[direct_cos < 0] = 0
-        direct_multiplier = 1 / (direct_cos + 1e-6)
+        direct_multiplier = 1 / (direct_cos + 1e-5)
         dist = dist_matrix[last_idx]
         dist_metric = direct_multiplier * dist
         idx = np.argmin(dist_metric) % num_points
@@ -828,7 +837,7 @@ def greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted
         direction_matrix[:, idx] = (0, 0)
 
 
-def connect_by_direction(coords, direction_mask, threshold=1000):
+def connect_by_direction(coords, direction_mask, threshold=100):
     num_points = coords.shape[0]
     float_coords = coords.astype('float')
     diff_matrix = np.repeat(float_coords[:, None], num_points, 1) - float_coords
