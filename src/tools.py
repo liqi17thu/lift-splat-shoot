@@ -708,7 +708,9 @@ def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx, alpha_poly=0.6, alpha
 
 def get_discrete_degree(vec):
     deg = np.mod(np.degrees(np.arctan2(vec[1], vec[0])), 360)
-    return (int(deg + 0.5) % 360) + 1
+    deg = (int(deg / 10 + 0.5) % 36) + 1
+    # deg = (int(deg + 0.5) % 360) + 1
+    return deg
 
 
 def get_local_map(nmap, center, stretch, layer_names, line_names):
