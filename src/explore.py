@@ -5,6 +5,7 @@ Authors: Jonah Philion and Sanja Fidler
 """
 import os
 import random
+import cv2
 
 import cv2
 import torch
@@ -34,29 +35,45 @@ from .vpn_model import VPNet
 from .postprocess import LaneNetPostProcessor
 from .pointpillar import PointPillar
 from .ori_vpn import VPNModel
+from copy import deepcopy
 from .metric import LaneSegMetric
 
 from .tools import denormalize_img, sort_points_by_dist
 
+
+def redundant_filter(mask, kernel=25):
+    M, N = mask.shape
+    for i in range(M):
+        for j in range(N):
+            if mask[i, j] != 0:
+                var = deepcopy(mask[i, j])
+                local_mask = mask[
+                             max(0, i - kernel // 2):min(M, i + kernel // 2 + 1),
+                             max(0, j - kernel // 2):min(N, j + kernel // 2 + 1)]
+                local_mask[local_mask == mask[i, j]] = 0
+                mask[i, j] = var
+    return mask
+
+
 def gen_data(version,
-            dataroot='data/nuScenes',
+             dataroot='data/nuScenes',
 
-            H=900, W=1600,
-            resize_lim=(0.193, 0.225),
-            final_dim=(128, 352),
-            bot_pct_lim=(0.0, 0.22),
-            rot_lim=(-5.4, 5.4),
-            rand_flip=False,
-            ncams=6,
-            line_width=5,
-            preprocess=False,
-            overwrite=False,
+             H=900, W=1600,
+             resize_lim=(0.193, 0.225),
+             final_dim=(128, 352),
+             bot_pct_lim=(0.0, 0.22),
+             rot_lim=(-5.4, 5.4),
+             rand_flip=False,
+             ncams=6,
+             line_width=1,
+             preprocess=False,
+             overwrite=False,
 
-            xbound=[-30.0, 30.0, 0.15],
-            ybound=[-15.0, 15.0, 0.15],
-            zbound=[-10.0, 10.0, 20.0],
-            dbound=[4.0, 45.0, 1.0],
-          ):
+             xbound=[-30.0, 30.0, 0.15],
+             ybound=[-15.0, 15.0, 0.15],
+             zbound=[-10.0, 10.0, 20.0],
+             dbound=[4.0, 45.0, 1.0],
+             ):
     grid_conf = {
         'xbound': xbound,
         'ybound': ybound,
@@ -64,18 +81,18 @@ def gen_data(version,
         'dbound': dbound,
     }
     data_aug_conf = {
-                    'resize_lim': resize_lim,
-                    'final_dim': final_dim,
-                    'rot_lim': rot_lim,
-                    'H': H, 'W': W,
-                    'rand_flip': rand_flip,
-                    'bot_pct_lim': bot_pct_lim,
-                    'preprocess': preprocess,
-                    'line_width': line_width,
-                    'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-                             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
-                    'Ncams': ncams,
-                }
+        'resize_lim': resize_lim,
+        'final_dim': final_dim,
+        'rot_lim': rot_lim,
+        'H': H, 'W': W,
+        'rand_flip': rand_flip,
+        'bot_pct_lim': bot_pct_lim,
+        'preprocess': preprocess,
+        'line_width': line_width,
+        'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
+        'Ncams': ncams,
+    }
 
     nusc = NuScenes(version='v1.0-{}'.format(version),
                     dataroot=dataroot,
@@ -102,34 +119,70 @@ def gen_data(version,
         Image.fromarray(seg_mask * 10).save(seg_path)
         inst_mask = (inst_mask * 30).numpy().sum(0).astype('uint8')
         Image.fromarray(inst_mask).save(inst_path)
+        forward_mask = redundant_filter(forward_mask)
+        coords = np.where(forward_mask != 0)
+        coords = np.stack([coords[1], coords[0]], -1)
+        plt.figure(figsize=(8, 4))
+        plt.xticks([])
+        plt.yticks([])
+        R = 2
+        arr_width= 1
+        for coord in coords:
+            x = coord[0]
+            y = coord[1]
+            angle = np.deg2rad((forward_mask[y, x] - 1) * 10)
+            dx = R * np.cos(angle)
+            dy = R * np.sin(angle)
+            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3 * arr_width, head_length=9 * arr_width, overhang=-0.2)
+        plt.savefig(forward_path)
+        print(forward_path)
 
-        forward_mask = torch.stack([forward_mask, forward_mask % 100, forward_mask % 200], -1)
-        Image.fromarray((forward_mask * 40).numpy().astype('uint8')).save(forward_path)
+        backward_mask = redundant_filter(backward_mask)
+        coords = np.where(backward_mask != 0)
+        coords = np.stack([coords[1], coords[0]], -1)
+        plt.figure(figsize=(8, 4))
+        plt.xticks([])
+        plt.yticks([])
+        for coord in coords:
+            x = coord[0]
+            y = coord[1]
+            angle = np.deg2rad((backward_mask[y, x] - 1) * 10)
+            dx = R * np.cos(angle)
+            dy = R * np.sin(angle)
+            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3 * arr_width, head_length=9 * arr_width, overhang=-0.2)
+        plt.savefig(backward_path)
+        print(backward_path)
 
-        backward_mask = torch.stack([backward_mask, backward_mask % 100, backward_mask % 200], -1)
-        Image.fromarray((backward_mask * 40).numpy().astype('uint8')).save(backward_path)
+        # forward_mask = torch.stack([forward_mask, forward_mask % 100, forward_mask % 200], -1)
+        # Image.fromarray((forward_mask * 40).numpy().astype('uint8')).save(forward_path)
+        # print(forward_path)
+        #
+        # backward_mask = torch.stack([backward_mask, backward_mask % 100, backward_mask % 200], -1)
+        # Image.fromarray((backward_mask * 40).numpy().astype('uint8')).save(backward_path)
+        # print(backward_path)
+
 
 def viz_ipm_with_label(version,
-            dataroot='data/nuScenes',
+                       dataroot='data/nuScenes',
 
-            H=900, W=1600,
-            resize_lim=(0.193, 0.225),
-            final_dim=(128, 352),
-            # final_dim=(900, 1600),
-            bot_pct_lim=(0.0, 0.22),
-            rot_lim=(-5.4, 5.4),
-            rand_flip=False,
-            ncams=6,
-            line_width=5,
-            preprocess=False,
-            overwrite=False,
-            z_roll_pitch=False,
+                       H=900, W=1600,
+                       resize_lim=(0.193, 0.225),
+                       final_dim=(128, 352),
+                       # final_dim=(900, 1600),
+                       bot_pct_lim=(0.0, 0.22),
+                       rot_lim=(-5.4, 5.4),
+                       rand_flip=False,
+                       ncams=6,
+                       line_width=5,
+                       preprocess=False,
+                       overwrite=False,
+                       z_roll_pitch=False,
 
-            xbound=[-30.0, 30.0, 0.15],
-            ybound=[-15.0, 15.0, 0.15],
-            zbound=[-10.0, 10.0, 20.0],
-            dbound=[4.0, 45.0, 1.0],
-          ):
+                       xbound=[-30.0, 30.0, 0.15],
+                       ybound=[-15.0, 15.0, 0.15],
+                       zbound=[-10.0, 10.0, 20.0],
+                       dbound=[4.0, 45.0, 1.0],
+                       ):
     grid_conf = {
         'xbound': xbound,
         'ybound': ybound,
@@ -137,27 +190,29 @@ def viz_ipm_with_label(version,
         'dbound': dbound,
     }
     data_aug_conf = {
-                    'resize_lim': resize_lim,
-                    'final_dim': final_dim,
-                    'rot_lim': rot_lim,
-                    'H': H, 'W': W,
-                    'rand_flip': rand_flip,
-                    'bot_pct_lim': bot_pct_lim,
-                    'preprocess': preprocess,
-                    'line_width': line_width,
-                    'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-                             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
-                    'Ncams': ncams,
-                }
-    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
-                                          grid_conf=grid_conf, bsz=4, nworkers=10,
-                                          parser_name='segmentationdata', distributed=False)
+        'resize_lim': resize_lim,
+        'final_dim': final_dim,
+        'rot_lim': rot_lim,
+        'H': H, 'W': W,
+        'rand_flip': rand_flip,
+        'bot_pct_lim': bot_pct_lim,
+        'preprocess': preprocess,
+        'line_width': line_width,
+        'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
+        'Ncams': ncams,
+    }
+    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot,
+                                                                          data_aug_conf=data_aug_conf,
+                                                                          grid_conf=grid_conf, bsz=4, nworkers=10,
+                                                                          parser_name='segmentationdata',
+                                                                          distributed=False)
 
     val = 0.01
     fH, fW = final_dim
     fH, fW = 1, 2
-    plt.figure(figsize=(3*fW*val, (3.5*fW + 2*fH)*val))
-    gs = mpl.gridspec.GridSpec(4, 3, height_ratios=(1.5*fW, 1.5*fW, fH, fH))
+    plt.figure(figsize=(3 * fW * val, (3.5 * fW + 2 * fH) * val))
+    gs = mpl.gridspec.GridSpec(4, 3, height_ratios=(1.5 * fW, 1.5 * fW, fH, fH))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
     ipm_with_pitch = HDMapNet(xbound, ybound, outC=3, cam_encoding=False, bev_encoding=False, z_roll_pitch=True)
@@ -165,26 +220,27 @@ def viz_ipm_with_label(version,
 
     # plt.figure(figsize=(4, 2))
     with torch.no_grad():
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(valloader):
+        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs,
+                     inst_label) in enumerate(valloader):
             topdown_with_pitch = ipm_with_pitch(imgs.cuda(),
-                    rots.cuda(),
-                    trans.cuda(),
-                    intrins.cuda(),
-                    post_rots.cuda(),
-                    post_trans.cuda(),
-                    translation.cuda(),
-                    yaw_pitch_roll.cuda(),
-                    )
+                                                rots.cuda(),
+                                                trans.cuda(),
+                                                intrins.cuda(),
+                                                post_rots.cuda(),
+                                                post_trans.cuda(),
+                                                translation.cuda(),
+                                                yaw_pitch_roll.cuda(),
+                                                )
 
             topdown_without_pitch = ipm_without_pitch(imgs.cuda(),
-                    rots.cuda(),
-                    trans.cuda(),
-                    intrins.cuda(),
-                    post_rots.cuda(),
-                    post_trans.cuda(),
-                    translation.cuda(),
-                    yaw_pitch_roll.cuda(),
-                    )
+                                                      rots.cuda(),
+                                                      trans.cuda(),
+                                                      intrins.cuda(),
+                                                      post_rots.cuda(),
+                                                      post_trans.cuda(),
+                                                      translation.cuda(),
+                                                      yaw_pitch_roll.cuda(),
+                                                      )
 
             binimgs[binimgs < 0.1] = np.nan
             for si in range(binimgs.shape[0]):
@@ -251,19 +307,21 @@ def lidar_check(version,
         'dbound': dbound,
     }
     cams = ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-                             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
+            'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
     data_aug_conf = {
-                    'resize_lim': resize_lim,
-                    'final_dim': final_dim,
-                    'rot_lim': rot_lim,
-                    'H': H, 'W': W,
-                    'rand_flip': rand_flip,
-                    'bot_pct_lim': bot_pct_lim,
-                    'cams': cams,
-                    'Ncams': 5,
-                }
-    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
-                                                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
+        'resize_lim': resize_lim,
+        'final_dim': final_dim,
+        'rot_lim': rot_lim,
+        'H': H, 'W': W,
+        'rand_flip': rand_flip,
+        'bot_pct_lim': bot_pct_lim,
+        'cams': cams,
+        'Ncams': 5,
+    }
+    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot,
+                                                                          data_aug_conf=data_aug_conf,
+                                                                          grid_conf=grid_conf, bsz=bsz,
+                                                                          nworkers=nworkers,
                                                                           parser_name='vizdata', distributed=False)
 
     loader = trainloader if viz_train else valloader
@@ -272,8 +330,8 @@ def lidar_check(version,
 
     rat = H / W
     val = 10.1
-    fig = plt.figure(figsize=(val + val/3*2*rat*3, val/3*2*rat))
-    gs = mpl.gridspec.GridSpec(2, 6, width_ratios=(1, 1, 1, 2*rat, 2*rat, 2*rat))
+    fig = plt.figure(figsize=(val + val / 3 * 2 * rat * 3, val / 3 * 2 * rat))
+    gs = mpl.gridspec.GridSpec(2, 6, width_ratios=(1, 1, 1, 2 * rat, 2 * rat, 2 * rat))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
     for epoch in range(nepochs):
@@ -294,13 +352,14 @@ def lidar_check(version,
                     plt.imshow(showimg)
                     if show_lidar:
                         plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask],
-                                s=5, alpha=0.1, cmap='jet')
+                                    s=5, alpha=0.1, cmap='jet')
                     # plot_pts = post_rots[si, imgi].matmul(img_pts[si, imgi].view(-1, 3).t()) + post_trans[si, imgi].unsqueeze(1)
                     # plt.scatter(img_pts[:, :, :, 0].view(-1), img_pts[:, :, :, 1].view(-1), s=1)
                     plt.axis('off')
 
                     plt.sca(final_ax)
-                    plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.', label=cams[imgi].replace('_', ' '))
+                    plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.',
+                             label=cams[imgi].replace('_', ' '))
 
                 plt.legend(loc='upper right')
                 final_ax.set_aspect('equal')
@@ -322,24 +381,24 @@ def lidar_check(version,
 
 
 def cumsum_check(version,
-                dataroot='/data/nuscenes',
-                gpuid=1,
+                 dataroot='/data/nuscenes',
+                 gpuid=1,
 
-                H=900, W=1600,
-                resize_lim=(0.193, 0.225),
-                final_dim=(128, 352),
-                bot_pct_lim=(0.0, 0.22),
-                rot_lim=(-5.4, 5.4),
-                rand_flip=True,
+                 H=900, W=1600,
+                 resize_lim=(0.193, 0.225),
+                 final_dim=(128, 352),
+                 bot_pct_lim=(0.0, 0.22),
+                 rot_lim=(-5.4, 5.4),
+                 rand_flip=True,
 
-                xbound=[-50.0, 50.0, 0.5],
-                ybound=[-50.0, 50.0, 0.5],
-                zbound=[-10.0, 10.0, 20.0],
-                dbound=[4.0, 45.0, 1.0],
+                 xbound=[-50.0, 50.0, 0.5],
+                 ybound=[-50.0, 50.0, 0.5],
+                 zbound=[-10.0, 10.0, 20.0],
+                 dbound=[4.0, 45.0, 1.0],
 
-                bsz=4,
-                nworkers=10,
-                ):
+                 bsz=4,
+                 nworkers=10,
+                 ):
     grid_conf = {
         'xbound': xbound,
         'ybound': ybound,
@@ -347,16 +406,16 @@ def cumsum_check(version,
         'dbound': dbound,
     }
     data_aug_conf = {
-                    'resize_lim': resize_lim,
-                    'final_dim': final_dim,
-                    'rot_lim': rot_lim,
-                    'H': H, 'W': W,
-                    'rand_flip': rand_flip,
-                    'bot_pct_lim': bot_pct_lim,
-                    'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-                             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
-                    'Ncams': 6,
-                }
+        'resize_lim': resize_lim,
+        'final_dim': final_dim,
+        'rot_lim': rot_lim,
+        'H': H, 'W': W,
+        'rand_flip': rand_flip,
+        'bot_pct_lim': bot_pct_lim,
+        'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
+        'Ncams': 6,
+    }
     trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
                                           parser_name='segmentationdata')
@@ -369,58 +428,57 @@ def cumsum_check(version,
 
     model.eval()
     for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, binimgs) in enumerate(loader):
-
         model.use_quickcumsum = False
         model.zero_grad()
         out = model(imgs.to(device),
-                rots.to(device),
-                trans.to(device),
-                intrins.to(device),
-                post_rots.to(device),
-                post_trans.to(device),
-                )
+                    rots.to(device),
+                    trans.to(device),
+                    intrins.to(device),
+                    post_rots.to(device),
+                    post_trans.to(device),
+                    )
         out.mean().backward()
         print('autograd:    ', out.mean().detach().item(), model.camencode.depthnet.weight.grad.mean().item())
 
         model.use_quickcumsum = True
         model.zero_grad()
         out = model(imgs.to(device),
-                rots.to(device),
-                trans.to(device),
-                intrins.to(device),
-                post_rots.to(device),
-                post_trans.to(device),
-                )
+                    rots.to(device),
+                    trans.to(device),
+                    intrins.to(device),
+                    post_rots.to(device),
+                    post_trans.to(device),
+                    )
         out.mean().backward()
         print('quick cumsum:', out.mean().detach().item(), model.camencode.depthnet.weight.grad.mean().item())
         print()
 
 
 def eval_model(version,
-                modelf,
-                dataroot='data/nuScenes',
-                gpuid=0,
-                outC=4,
-                method='temporal_HDMapNet',
-                preprocess=False,
+               modelf,
+               dataroot='data/nuScenes',
+               gpuid=0,
+               outC=4,
+               method='temporal_HDMapNet',
+               preprocess=False,
 
-                H=900, W=1600,
-                resize_lim=(0.193, 0.225),
-                final_dim=(128, 352),
-                bot_pct_lim=(0.0, 0.22),
-                rot_lim=(-5.4, 5.4),
-                rand_flip=True,
-                line_width=1,
+               H=900, W=1600,
+               resize_lim=(0.193, 0.225),
+               final_dim=(128, 352),
+               bot_pct_lim=(0.0, 0.22),
+               rot_lim=(-5.4, 5.4),
+               rand_flip=True,
+               line_width=1,
 
-                xbound=[-30.0, 30.0, 0.15],
-                ybound=[-15.0, 15.0, 0.15],
-                zbound=[-10.0, 10.0, 20.0],
-                dbound=[4.0, 45.0, 1.0],
-                eval_mAP=False,
+               xbound=[-30.0, 30.0, 0.15],
+               ybound=[-15.0, 15.0, 0.15],
+               zbound=[-10.0, 10.0, 20.0],
+               dbound=[4.0, 45.0, 1.0],
+               eval_mAP=False,
 
-                bsz=4,
-                nworkers=10,
-                ):
+               bsz=4,
+               nworkers=10,
+               ):
     grid_conf = {
         'xbound': xbound,
         'ybound': ybound,
@@ -428,21 +486,24 @@ def eval_model(version,
         'dbound': dbound,
     }
     data_aug_conf = {
-                    'resize_lim': resize_lim,
-                    'final_dim': final_dim,
-                    'rot_lim': rot_lim,
-                    'preprocess': preprocess,
-                    'H': H, 'W': W,
-                    'rand_flip': rand_flip,
-                    'line_width': line_width,
-                    'bot_pct_lim': bot_pct_lim,
-                    'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-                             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
-                    'Ncams': 6,
-                }
-    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
-                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='segmentationdata', distributed=False)
+        'resize_lim': resize_lim,
+        'final_dim': final_dim,
+        'rot_lim': rot_lim,
+        'preprocess': preprocess,
+        'H': H, 'W': W,
+        'rand_flip': rand_flip,
+        'line_width': line_width,
+        'bot_pct_lim': bot_pct_lim,
+        'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
+                 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
+        'Ncams': 6,
+    }
+    [trainloader, valloader], [train_sampler, val_sampler] = compile_data(version, dataroot,
+                                                                          data_aug_conf=data_aug_conf,
+                                                                          grid_conf=grid_conf, bsz=bsz,
+                                                                          nworkers=nworkers,
+                                                                          parser_name='segmentationdata',
+                                                                          distributed=False)
 
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
@@ -526,16 +587,16 @@ def viz_model_preds(version,
     cams = ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
     data_aug_conf = {
-                    'resize_lim': resize_lim,
-                    'final_dim': final_dim,
-                    'rot_lim': rot_lim,
-                    'H': H, 'W': W,
-                    'line_width': line_width,
-                    'rand_flip': rand_flip,
-                    'bot_pct_lim': bot_pct_lim,
-                    'cams': cams,
-                    'Ncams': 5,
-                }
+        'resize_lim': resize_lim,
+        'final_dim': final_dim,
+        'rot_lim': rot_lim,
+        'H': H, 'W': W,
+        'line_width': line_width,
+        'rand_flip': rand_flip,
+        'bot_pct_lim': bot_pct_lim,
+        'cams': cams,
+        'Ncams': 5,
+    }
     trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
                                           parser_name='segmentationdata')
@@ -559,11 +620,10 @@ def viz_model_preds(version,
         log = loader.dataset.nusc.get('log', rec['log_token'])
         scene2map[rec['name']] = log['location']
 
-
     val = 0.01
     fH, fW = final_dim
-    fig = plt.figure(figsize=(3*fW*val, (1.5*fW + 2*fH)*val))
-    gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(1.5*fW, fH, fH))
+    fig = plt.figure(figsize=(3 * fW * val, (1.5 * fW + 2 * fH) * val))
+    gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(1.5 * fW, fH, fH))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
     model.eval()
@@ -571,12 +631,12 @@ def viz_model_preds(version,
     with torch.no_grad():
         for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, binimgs) in enumerate(loader):
             out = model(imgs.to(device),
-                    rots.to(device),
-                    trans.to(device),
-                    intrins.to(device),
-                    post_rots.to(device),
-                    post_trans.to(device),
-                    )
+                        rots.to(device),
+                        trans.to(device),
+                        intrins.to(device),
+                        post_rots.to(device),
+                        post_trans.to(device),
+                        )
             out = out.sigmoid().cpu()
 
             for si in range(imgs.shape[0]):
@@ -618,31 +678,31 @@ def viz_model_preds(version,
 
 
 def viz_model_preds_class3(version,
-                            modelf,
-                            dataroot='data/nuScenes',
-                            map_folder='data/nuScenes',
-                            gpuid=0,
-                            viz_train=False,
-                            outC=4,
-                            method='temporal_HDMapNet',
+                           modelf,
+                           dataroot='data/nuScenes',
+                           map_folder='data/nuScenes',
+                           gpuid=0,
+                           viz_train=False,
+                           outC=4,
+                           method='temporal_HDMapNet',
 
-                            preprocess=False,
-                            H=900, W=1600,
-                            resize_lim=(0.193, 0.225),
-                            final_dim=(128, 352),
-                            bot_pct_lim=(0.0, 0.22),
-                            rot_lim=(-5.4, 5.4),
-                            line_width=1,
-                            rand_flip=True,
+                           preprocess=False,
+                           H=900, W=1600,
+                           resize_lim=(0.193, 0.225),
+                           final_dim=(128, 352),
+                           bot_pct_lim=(0.0, 0.22),
+                           rot_lim=(-5.4, 5.4),
+                           line_width=1,
+                           rand_flip=True,
 
-                            xbound=[-30.0, 30.0, 0.15],
-                            ybound=[-15.0, 15.0, 0.15],
-                            zbound=[-10.0, 10.0, 20.0],
-                            dbound=[4.0, 45.0, 1.0],
+                           xbound=[-30.0, 30.0, 0.15],
+                           ybound=[-15.0, 15.0, 0.15],
+                           zbound=[-10.0, 10.0, 20.0],
+                           dbound=[4.0, 45.0, 1.0],
 
-                            bsz=4,
-                            nworkers=10,
-                            ):
+                           bsz=4,
+                           nworkers=10,
+                           ):
     grid_conf = {
         'xbound': xbound,
         'ybound': ybound,
@@ -652,17 +712,17 @@ def viz_model_preds_class3(version,
     cams = ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
     data_aug_conf = {
-                    'resize_lim': resize_lim,
-                    'final_dim': final_dim,
-                    'rot_lim': rot_lim,
-                    'H': H, 'W': W,
-                    'rand_flip': rand_flip,
-                    'line_width': line_width,
-                    'preprocess': preprocess,
-                    'bot_pct_lim': bot_pct_lim,
-                    'cams': cams,
-                    'Ncams': 6,
-                }
+        'resize_lim': resize_lim,
+        'final_dim': final_dim,
+        'rot_lim': rot_lim,
+        'H': H, 'W': W,
+        'rand_flip': rand_flip,
+        'line_width': line_width,
+        'preprocess': preprocess,
+        'bot_pct_lim': bot_pct_lim,
+        'cams': cams,
+        'Ncams': 6,
+    }
 
     temporal = 'temporal' in method
     if temporal:
@@ -696,27 +756,27 @@ def viz_model_preds_class3(version,
         log = loader.dataset.nusc.get('log', rec['log_token'])
         scene2map[rec['name']] = log['location']
 
-
     val = 0.01
     fH, fW = final_dim
-    fig = plt.figure(figsize=(3*fW*val, (2*fW + 2*fH)*val))
-    gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(2*fW, fH, fH))
+    fig = plt.figure(figsize=(3 * fW * val, (2 * fW + 2 * fH) * val))
+    gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(2 * fW, fH, fH))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
     model.eval()
     counter = 0
     with torch.no_grad():
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs) in enumerate(loader):
+        for batchi, (
+        imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs) in enumerate(loader):
 
             out = model(imgs.to(device),
-                    rots.to(device),
-                    trans.to(device),
-                    intrins.to(device),
-                    post_rots.to(device),
-                    post_trans.to(device),
-                    translation.to(device),
-                    yaw_pitch_roll.to(device),
-                    )
+                        rots.to(device),
+                        trans.to(device),
+                        intrins.to(device),
+                        post_rots.to(device),
+                        post_trans.to(device),
+                        translation.to(device),
+                        yaw_pitch_roll.to(device),
+                        )
             out = out.softmax(1).cpu()
 
             if temporal:
@@ -770,7 +830,6 @@ def viz_model_preds_class3(version,
 
 
 from .tools import connect_by_direction
-
 def viz_model_preds_inst(version,
                             modelf,
                             dataroot='data/nuScenes',
