@@ -57,31 +57,27 @@ class MyNuScenesMapExplorer(NuScenesMapExplorer):
                 coords = np.asarray(list(line.coords), np.int32).reshape((-1, 2))
                 if len(coords) < 2:
                     continue
+                if type == 'backward':
+                    coords = np.flip(coords, 0)
                 if type == 'index':
                     cv2.polylines(mask, [coords], False, color=id, thickness=thickness)
-                elif type == 'forward':
-                    cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-2] - coords[-1]), thickness=thickness)
+                else:
                     for i in range(len(coords) - 1):
                         cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i + 1] - coords[i]), thickness=thickness)
-                elif type == 'backward':
-                    cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[0] - coords[1]), thickness=thickness)
-                    for i in range(1, len(coords)):
-                        cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i - 1] - coords[i]), thickness=thickness)
+                    # cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-1] - coords[-2]), thickness=thickness)
         else:
             id += 1
             coords = np.asarray(list(lines.coords), np.int32).reshape((-1, 2))
             if len(coords) < 2:
                 return mask, id
+            if type == 'backward':
+                coords = np.flip(coords, 0)
             if type == 'index':
                 cv2.polylines(mask, [coords], False, color=id, thickness=thickness)
-            elif type == 'forward':
-                cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-2] - coords[-1]), thickness=thickness)
-                for i in range(len(coords)-1):
-                    cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i+1] - coords[i]), thickness=thickness)
-            elif type == 'backward':
-                cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[0] - coords[1]), thickness=thickness)
-                for i in range(1, len(coords)):
-                    cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i-1] - coords[i]), thickness=thickness)
+            else:
+                for i in range(len(coords) - 1):
+                    cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i + 1] - coords[i]), thickness=thickness)
+                # cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-1] - coords[-2]), thickness=thickness)
 
         return mask, id
 
@@ -369,29 +365,25 @@ def extract_contour(topdown_seg_mask, canvas_size, thickness=5, type='index'):
                 coords = np.asarray(list(l.coords), np.int32).reshape((-1, 2))
                 if len(coords) < 2:
                     continue
+                if type == 'backward':
+                    coords = np.flip(coords, 0)
                 if type == 'index':
                     cv2.polylines(mask, [coords], False, color=idx, thickness=thickness)
-                elif type == 'forward':
-                    cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-2] - coords[-1]), thickness=thickness)
+                else:
                     for i in range(len(coords) - 1):
                         cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i + 1] - coords[i]), thickness=thickness)
-                elif type == 'backward':
-                    cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[0] - coords[1]), thickness=thickness)
-                    for i in range(1, len(coords)):
-                        cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i - 1] - coords[i]), thickness=thickness)
+                    # cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-1] - coords[-2]), thickness=thickness)
         elif isinstance(line, LineString):
             idx += 1
             coords = np.asarray(list(line.coords), np.int32).reshape((-1, 2))
             if len(coords) < 2:
                 continue
+            if type == 'backward':
+                coords = np.flip(coords, 0)
             if type == 'index':
                 cv2.polylines(mask, [coords], False, color=idx, thickness=thickness)
-            elif type == 'forward':
-                cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-2] - coords[-1]), thickness=thickness)
-                for i in range(len(coords)-1):
-                    cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i+1] - coords[i]), thickness=thickness)
-            elif type == 'backward':
-                cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[0] - coords[1]), thickness=thickness)
-                for i in range(1, len(coords)):
-                    cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i-1] - coords[i]), thickness=thickness)
+            else:
+                for i in range(len(coords) - 1):
+                    cv2.polylines(mask, [coords[i:]], False, color=get_discrete_degree(coords[i + 1] - coords[i]), thickness=thickness)
+                # cv2.polylines(mask, [coords], False, color=get_discrete_degree(coords[-1] - coords[-2]), thickness=thickness)
     return mask, idx
