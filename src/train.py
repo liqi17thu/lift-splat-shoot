@@ -161,7 +161,7 @@ def train(version='mini',
     # loss_fn = FocalLoss(alpha=.25, gamma=2.).cuda(gpuid)
     loss_fn = SimpleLoss(pos_weight).cuda()
     embedded_loss_fn = DiscriminativeLoss(embedded_dim, delta_v, delta_d).cuda()
-    direction_loss_fn = torch.nn.BCEWithLogitsLoss(reduction='none')
+    direction_loss_fn = torch.nn.BCELoss(reduction='none')
 
     writer = SummaryWriter(logdir=logdir)
     val_step = 1000 if version == 'mini' else 10000
@@ -193,10 +193,10 @@ def train(version='mini',
             direction_mask = direction_mask.cuda()
             seg_loss = loss_fn(preds, binimgs)
             var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask)
-            direction_loss = direction_loss_fn(direction, direction_mask)
+            direction_loss = direction_loss_fn(torch.softmax(direction, 1), direction_mask)
             lane_mask = (1 - direction_mask[:, 0]).unsqueeze(1)
             direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * 361 + 1e-6)
-            final_loss = seg_loss * scale_seg + var_loss * scale_var + dist_loss * scale_dist + direction_loss
+            final_loss = seg_loss * scale_seg + var_loss * scale_var + dist_loss * scale_dist + direction_loss * 0.2
             final_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             opt.step()

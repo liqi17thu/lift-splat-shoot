@@ -310,6 +310,7 @@ class NuscData(torch.utils.data.Dataset):
         backward_mask = label_onehot_encoding(torch.tensor(backward_mask), 37)
         direction_mask = forward_mask
         direction_mask[backward_mask != 0] = 1.
+        direction_mask = direction_mask / direction_mask.sum(0, keepdim=True)
 
         return torch.Tensor(seg_mask), torch.Tensor(inst_mask), torch.Tensor(forward_mask), torch.Tensor(backward_mask)
 

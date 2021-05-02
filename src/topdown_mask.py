@@ -357,7 +357,7 @@ def extract_contour(topdown_seg_mask, canvas_size, thickness=5, type='index'):
         line = line.intersection(patch)
         if isinstance(line, MultiLineString):
             line = ops.linemerge(line)
-        line = line.simplify(tolerance=1.)
+        line = line.simplify(tolerance=1.0)
 
         if isinstance(line, MultiLineString):
             for l in line:
