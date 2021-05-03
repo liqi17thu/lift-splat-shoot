@@ -308,11 +308,14 @@ class NuscData(torch.utils.data.Dataset):
 
         forward_mask = label_onehot_encoding(torch.tensor(forward_mask), 37)
         backward_mask = label_onehot_encoding(torch.tensor(backward_mask), 37)
+        # forward_mask = label_onehot_encoding(torch.tensor(forward_mask), 361)
+        # backward_mask = label_onehot_encoding(torch.tensor(backward_mask), 361)
         direction_mask = forward_mask
         direction_mask[backward_mask != 0] = 1.
         direction_mask = direction_mask / direction_mask.sum(0, keepdim=True)
 
-        return torch.Tensor(seg_mask), torch.Tensor(inst_mask), torch.Tensor(forward_mask), torch.Tensor(backward_mask)
+        # return torch.Tensor(seg_mask), torch.Tensor(inst_mask), torch.Tensor(forward_mask), torch.Tensor(backward_mask)
+        return torch.Tensor(seg_mask), torch.Tensor(inst_mask), torch.Tensor(direction_mask)
 
     def choose_cams(self):
         if self.is_train and self.data_aug_conf['Ncams'] < len(self.data_aug_conf['cams']):
@@ -447,7 +450,7 @@ def compile_data(version, dataroot, data_aug_conf, grid_conf, bsz, nworkers, par
         train_sampler = None
         val_sampler = None
         trainloader = torch.utils.data.DataLoader(traindata, batch_size=bsz,
-                                                  shuffle=False,
+                                                  shuffle=True,
                                                   num_workers=nworkers,
                                                   drop_last=True,
                                                   worker_init_fn=worker_rnd_init)

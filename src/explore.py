@@ -829,7 +829,10 @@ def viz_model_preds_class3(version,
                 counter += 1
 
 
+
+
 from .tools import connect_by_direction
+
 def viz_model_preds_inst(version,
                             modelf,
                             dataroot='data/nuScenes',
@@ -976,11 +979,11 @@ def viz_model_preds_inst(version,
             embedded = embedded.cpu()
 
             N, C, H, W = embedded.shape
-            embedded_test = embedded.permute(0, 2, 3, 1).reshape(N*H*W, C)
-            embedded_fitted = pca.fit_transform(embedded_test)
-            embedded_fitted = torch.sigmoid(torch.tensor(embedded_fitted)).numpy()
-            embedded_fitted = embedded_fitted.reshape((N, H, W, 3))
-            alpha_channel = np.ones((N, H, W, 1))
+            # embedded_test = embedded.permute(0, 2, 3, 1).reshape(N*H*W, C)
+            # embedded_fitted = pca.fit_transform(embedded_test)
+            # embedded_fitted = torch.sigmoid(torch.tensor(embedded_fitted)).numpy()
+            # embedded_fitted = embedded_fitted.reshape((N, H, W, 3))
+            # alpha_channel = np.ones((N, H, W, 1))
 
             if temporal:
                 imgs = imgs[:, 0]
@@ -1012,44 +1015,45 @@ def viz_model_preds_inst(version,
 
                     prob = origin_out[si][i]
                     prob[single_class_inst_mask == 0] = 0
-                    nms_mask_1 = ((max_pool_1(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
-                    avg_mask_1 = avg_pool_1(prob.unsqueeze(0))[0].cpu().numpy()
-                    nms_mask_2 = ((max_pool_2(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
-                    avg_mask_2 = avg_pool_2(prob.unsqueeze(0))[0].cpu().numpy()
-                    vertical_mask = avg_mask_1 > avg_mask_2
-                    horizontal_mask = ~vertical_mask
-                    nms_mask = (vertical_mask & nms_mask_1) | (horizontal_mask & nms_mask_2)
+                    # nms_mask_1 = ((max_pool_1(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
+                    # avg_mask_1 = avg_pool_1(prob.unsqueeze(0))[0].cpu().numpy()
+                    # nms_mask_2 = ((max_pool_2(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
+                    # avg_mask_2 = avg_pool_2(prob.unsqueeze(0))[0].cpu().numpy()
+                    # vertical_mask = avg_mask_1 > avg_mask_2
+                    # horizontal_mask = ~vertical_mask
+                    # nms_mask = (vertical_mask & nms_mask_1) | (horizontal_mask & nms_mask_2)
 
                     for j in range(1, num_inst+1):
                         full_idx = np.where((single_class_inst_mask == j))
                         full_lane_coord = np.vstack((full_idx[1], full_idx[0])).transpose()
 
-                        idx = np.where(nms_mask & (single_class_inst_mask == j))
-                        if len(idx[0]) == 0:
-                            continue
-                        lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
+                        # idx = np.where(nms_mask & (single_class_inst_mask == j))
+                        # if len(idx[0]) == 0:
+                        #     continue
+                        # lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
 
-                        range_0 = np.max(full_lane_coord[:, 0]) - np.min(full_lane_coord[:, 0])
-                        range_1 = np.max(full_lane_coord[:, 1]) - np.min(full_lane_coord[:, 1])
-                        if range_0 > range_1:
-                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[0])
-                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[0])
-                            if full_lane_coord[0][0] < nx[0] - full_lane_coord[-1][0]:
-                                full_lane_coord.insert(0, lane_coordinate[0])
-                            else:
-                                full_lane_coord.insert(0, lane_coordinate[-1])
-                        else:
-                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[1])
-                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[1])
-                            if full_lane_coord[0][1] < nx[1] - full_lane_coord[-1][1]:
-                                full_lane_coord.insert(0, lane_coordinate[0])
-                            else:
-                                full_lane_coord.insert(0, lane_coordinate[-1])
+                        # range_0 = np.max(full_lane_coord[:, 0]) - np.min(full_lane_coord[:, 0])
+                        # range_1 = np.max(full_lane_coord[:, 1]) - np.min(full_lane_coord[:, 1])
+                        # if range_0 > range_1:
+                        #     lane_coordinate = sorted(lane_coordinate, key=lambda x: x[0])
+                        #     full_lane_coord = sorted(full_lane_coord, key=lambda x: x[0])
+                        #     if full_lane_coord[0][0] < nx[0] - full_lane_coord[-1][0]:
+                        #         full_lane_coord.insert(0, lane_coordinate[0])
+                        #     else:
+                        #         full_lane_coord.insert(0, lane_coordinate[-1])
+                        # else:
+                        #     lane_coordinate = sorted(lane_coordinate, key=lambda x: x[1])
+                        #     full_lane_coord = sorted(full_lane_coord, key=lambda x: x[1])
+                        #     if full_lane_coord[0][1] < nx[1] - full_lane_coord[-1][1]:
+                        #         full_lane_coord.insert(0, lane_coordinate[0])
+                        #     else:
+                        #         full_lane_coord.insert(0, lane_coordinate[-1])
 
-                        full_lane_coord = np.stack(full_lane_coord)
-                        lane_coordinate = np.stack(lane_coordinate)
-                        idx = np.where((full_lane_coord == full_lane_coord[0]).all(-1))[0][-1]
-                        full_lane_coord = np.concatenate([full_lane_coord[:idx], full_lane_coord[idx+1:]])
+                        # full_lane_coord = np.stack(full_lane_coord)
+                        # lane_coordinate = np.stack(lane_coordinate)
+                        # idx = np.where((full_lane_coord == full_lane_coord[0]).all(-1))[0][-1]
+                        # full_lane_coord = np.concatenate([full_lane_coord[:idx], full_lane_coord[idx+1:]])
+
                         lane_coordinate = connect_by_direction(full_lane_coord, direction[si])
                         # lane_coordinate = sort_points_by_dist(lane_coordinate)
                         simplified_coords.append(lane_coordinate)

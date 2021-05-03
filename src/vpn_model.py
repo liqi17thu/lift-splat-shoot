@@ -80,7 +80,7 @@ class CamEncode(nn.Module):
 
 
 class BevEncode(nn.Module):
-    def __init__(self, inC, outC, instance_seg=True, direction=True, embedded_dim=16, direction_dim=361):
+    def __init__(self, inC, outC, instance_seg=True, direction=True, embedded_dim=16, direction_dim=37):
         super(BevEncode, self).__init__()
         self.instance_seg = instance_seg
         self.direction = direction

@@ -18,6 +18,7 @@ from .data import compile_data
 from .tools import get_batch_iou_multi_class, get_val_info
 from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss, SimpleLoss, DiscriminativeLoss
+from .tools import calc_angle_diff
 from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet, TemporalVPNet
 # from .vit_model import VITNet
@@ -195,7 +196,8 @@ def train(version='mini',
             var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask)
             direction_loss = direction_loss_fn(torch.softmax(direction, 1), direction_mask)
             lane_mask = (1 - direction_mask[:, 0]).unsqueeze(1)
-            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * 361 + 1e-6)
+            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * direction_loss.shape[1] + 1e-6)
+            angle_diff = calc_angle_diff(direction, direction_mask)
             final_loss = seg_loss * scale_seg + var_loss * scale_var + dist_loss * scale_dist + direction_loss * 0.2
             final_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
@@ -211,6 +213,7 @@ def train(version='mini',
                 writer.add_scalar('train/reg_loss', reg_loss, counter)
                 writer.add_scalar('train/direction_loss', direction_loss, counter)
                 writer.add_scalar('train/final_loss', final_loss, counter)
+                writer.add_scalar('train/angle_diff', angle_diff, counter)
 
             if counter % 50 == 0 and local_rank == 0:
                 _, _, ious = get_batch_iou_multi_class(preds, binimgs)
@@ -228,6 +231,7 @@ def train(version='mini',
                     writer.add_scalar('val/reg_loss', val_info['reg_loss'], counter)
                     writer.add_scalar('val/direction_loss', val_info['direction_loss'], counter)
                     writer.add_scalar('val/final_loss', val_info['final_loss'], counter)
+                    writer.add_scalar('val/angle_diff', val_info['angle_diff'], counter)
                     write_log(writer, val_info['iou'], val_info['accuracy'], val_info['precision'], val_info['recall'], 'val', counter)
 
             if counter % val_step == 0 and local_rank == 0:
