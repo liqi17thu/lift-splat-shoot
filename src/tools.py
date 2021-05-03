@@ -884,6 +884,9 @@ def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken
         if dist_metric[idx] > 15:
             break
 
+        sorted_points.append(deepcopy(coords[idx]))
+        sorted_indices.append(idx)
+
         # NMS
         coords[np.linalg.norm(coords - last_point, axis=-1) < step] = 9999999
 
@@ -894,21 +897,18 @@ def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken
         taken = np.argmin(tmp)
         taken_direction[tuple(np.flip(coords[idx]))][taken] = True
 
-        sorted_points.append(coords[idx])
-        sorted_indices.append(idx)
-
 
 def connect_by_direction(coords, direction_mask, step=5):
-    num_points = coords.shape[0]
-    float_coords = coords.astype('float')
-    diff_matrix = np.repeat(float_coords[:, None], num_points, 1) - float_coords
-    dist_matrix = np.sqrt((diff_matrix ** 2).sum(-1))
-    direction_matrix = diff_matrix / (dist_matrix.reshape(num_points, num_points, 1) + 1e-6)
+    # num_points = coords.shape[0]
+    # float_coords = coords.astype('float')
+    # diff_matrix = np.repeat(float_coords[:, None], num_points, 1) - float_coords
+    # dist_matrix = np.sqrt((diff_matrix ** 2).sum(-1))
+    # direction_matrix = diff_matrix / (dist_matrix.reshape(num_points, num_points, 1) + 1e-6)
 
-    sorted_points = [coords[0]]
+    # dist_matrix[:, 0] = np.inf
+    # direction_matrix[:, 0] = (0, 0)
+    sorted_points = [deepcopy(coords[0])]
     sorted_indices = [0]
-    dist_matrix[:, 0] = np.inf
-    direction_matrix[:, 0] = (0, 0)
     taken_direction = np.zeros_like(direction_mask, dtype=np.bool)
 
     connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step)
