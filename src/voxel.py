@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-import torch_scatter
+# import torch_scatter
 
 
 def pad_or_trim_to_np(x, shape, pad_val=0):
@@ -45,8 +45,8 @@ def points_to_voxels(
     grid_size = torch.from_numpy(grid_size).to(points_xyz.device)
     grid_size = grid_size.int()
     zeros = torch.zeros_like(grid_size)
-    voxel_paddings = ((points_mask < 1.0) | 
-                      torch.any((voxel_coords >= grid_size) | 
+    voxel_paddings = ((points_mask < 1.0) |
+                      torch.any((voxel_coords >= grid_size) |
                                 (voxel_coords < zeros), dim=-1))
     voxel_indices = raval_index(
       torch.reshape(voxel_coords, [batch_size * num_points, 3]), grid_size)
@@ -62,28 +62,28 @@ def points_to_voxels(
                             torch.zeros_like(voxel_xyz),
                             voxel_xyz)
     voxel_paddings = voxel_paddings.float()
-    
+
     voxel_indices = voxel_indices.long()
     points_per_voxel = torch_scatter.scatter_sum(
         torch.ones((batch_size, num_points), dtype=voxel_coords.dtype, device=voxel_coords.device) * (1-voxel_paddings),
-        voxel_indices, 
+        voxel_indices,
         dim=1,
         dim_size=num_voxels
     )
-    
+
     voxel_point_count = torch.gather(points_per_voxel,
                                      dim=1,
                                      index=voxel_indices)
-    
-    
+
+
     voxel_centroids = torch_scatter.scatter_mean(
         points_xyz,
-        voxel_indices, 
+        voxel_indices,
         dim=1,
         dim_size=num_voxels)
     point_centroids = torch.gather(voxel_centroids, dim=1, index=torch.unsqueeze(voxel_indices, dim=-1).repeat(1, 1, 3))
     local_points_xyz = points_xyz - point_centroids
-    
+
     result = {
         'local_points_xyz': local_points_xyz,
         'shifted_points_xyz': shifted_points_xyz,
@@ -102,6 +102,6 @@ def points_to_voxels(
         'voxel_point_count': voxel_point_count,
         'points_per_voxel': points_per_voxel
     }
-    
-                
+
+
     return result

@@ -926,8 +926,8 @@ def viz_model_preds_inst(version,
 
     val = 0.01
     fH, fW = final_dim
-    plt.figure(figsize=(3*fW*val, (3*fW)*val))
-    gs = mpl.gridspec.GridSpec(2, 3, height_ratios=(1.5*fW, 1.5*fW))
+    plt.figure(figsize=(3*fW*val, (4.5*fW)*val))
+    gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(1.5*fW, 1.5*fW, 1.5*fW))
 
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
@@ -945,12 +945,13 @@ def viz_model_preds_inst(version,
     car_img = Image.open('car_3.png')
     model.eval()
     # counter = 1204
-    counter = 72
-    # counter = 44
-    # counter = 0
+    # counter = 80
+    # counter = 72
+    counter = 44
+    counter = 0
     with torch.no_grad():
         for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label, direction_mask) in enumerate(loader):
-            if batchi < 18:
+            if batchi < 11:
                 continue
 
             out, embedded, direction = model(
@@ -1015,47 +1016,49 @@ def viz_model_preds_inst(version,
 
                     prob = origin_out[si][i]
                     prob[single_class_inst_mask == 0] = 0
-                    # nms_mask_1 = ((max_pool_1(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
-                    # avg_mask_1 = avg_pool_1(prob.unsqueeze(0))[0].cpu().numpy()
-                    # nms_mask_2 = ((max_pool_2(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
-                    # avg_mask_2 = avg_pool_2(prob.unsqueeze(0))[0].cpu().numpy()
-                    # vertical_mask = avg_mask_1 > avg_mask_2
-                    # horizontal_mask = ~vertical_mask
-                    # nms_mask = (vertical_mask & nms_mask_1) | (horizontal_mask & nms_mask_2)
+                    nms_mask_1 = ((max_pool_1(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
+                    avg_mask_1 = avg_pool_1(prob.unsqueeze(0))[0].cpu().numpy()
+                    nms_mask_2 = ((max_pool_2(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
+                    avg_mask_2 = avg_pool_2(prob.unsqueeze(0))[0].cpu().numpy()
+                    vertical_mask = avg_mask_1 > avg_mask_2
+                    horizontal_mask = ~vertical_mask
+                    nms_mask = (vertical_mask & nms_mask_1) | (horizontal_mask & nms_mask_2)
 
                     for j in range(1, num_inst+1):
                         full_idx = np.where((single_class_inst_mask == j))
                         full_lane_coord = np.vstack((full_idx[1], full_idx[0])).transpose()
 
-                        # idx = np.where(nms_mask & (single_class_inst_mask == j))
-                        # if len(idx[0]) == 0:
-                        #     continue
-                        # lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
+                        idx = np.where(nms_mask & (single_class_inst_mask == j))
+                        if len(idx[0]) == 0:
+                            continue
+                        lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
 
-                        # range_0 = np.max(full_lane_coord[:, 0]) - np.min(full_lane_coord[:, 0])
-                        # range_1 = np.max(full_lane_coord[:, 1]) - np.min(full_lane_coord[:, 1])
-                        # if range_0 > range_1:
-                        #     lane_coordinate = sorted(lane_coordinate, key=lambda x: x[0])
-                        #     full_lane_coord = sorted(full_lane_coord, key=lambda x: x[0])
-                        #     if full_lane_coord[0][0] < nx[0] - full_lane_coord[-1][0]:
-                        #         full_lane_coord.insert(0, lane_coordinate[0])
-                        #     else:
-                        #         full_lane_coord.insert(0, lane_coordinate[-1])
-                        # else:
-                        #     lane_coordinate = sorted(lane_coordinate, key=lambda x: x[1])
-                        #     full_lane_coord = sorted(full_lane_coord, key=lambda x: x[1])
-                        #     if full_lane_coord[0][1] < nx[1] - full_lane_coord[-1][1]:
-                        #         full_lane_coord.insert(0, lane_coordinate[0])
-                        #     else:
-                        #         full_lane_coord.insert(0, lane_coordinate[-1])
+                        range_0 = np.max(full_lane_coord[:, 0]) - np.min(full_lane_coord[:, 0])
+                        range_1 = np.max(full_lane_coord[:, 1]) - np.min(full_lane_coord[:, 1])
+                        if range_0 > range_1:
+                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[0])
+                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[0])
+                            if full_lane_coord[0][0] < nx[0] - full_lane_coord[-1][0]:
+                                full_lane_coord.insert(0, lane_coordinate[0])
+                            else:
+                                full_lane_coord.insert(0, lane_coordinate[-1])
+                        else:
+                            lane_coordinate = sorted(lane_coordinate, key=lambda x: x[1])
+                            full_lane_coord = sorted(full_lane_coord, key=lambda x: x[1])
+                            if full_lane_coord[0][1] < nx[1] - full_lane_coord[-1][1]:
+                                full_lane_coord.insert(0, lane_coordinate[0])
+                            else:
+                                full_lane_coord.insert(0, lane_coordinate[-1])
 
-                        # full_lane_coord = np.stack(full_lane_coord)
-                        # lane_coordinate = np.stack(lane_coordinate)
-                        # idx = np.where((full_lane_coord == full_lane_coord[0]).all(-1))[0][-1]
-                        # full_lane_coord = np.concatenate([full_lane_coord[:idx], full_lane_coord[idx+1:]])
+                        full_lane_coord = np.stack(full_lane_coord)
+                        lane_coordinate = np.stack(lane_coordinate)
+                        idx = np.where((full_lane_coord == full_lane_coord[0]).all(-1))[0][-1]
+                        full_lane_coord = np.concatenate([full_lane_coord[:idx], full_lane_coord[idx+1:]])
 
-                        lane_coordinate = connect_by_direction(full_lane_coord, direction[si])
-                        # lane_coordinate = sort_points_by_dist(lane_coordinate)
+                        # lane_coordinate = connect_by_direction(full_lane_coord, direction[si])
+                        lane_coordinate = sort_points_by_dist(lane_coordinate)
+                        lane_coordinate = lane_coordinate.astype('int32')
+                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si])
                         simplified_coords.append(lane_coordinate)
 
                     # inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
@@ -1069,11 +1072,23 @@ def viz_model_preds_inst(version,
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
 
+                R = 2
+                arr_width = 1
                 # plt.imshow(direction[si, ..., 0], alpha=0.6)
+                # for coord in simplified_coords:
+                #     plt.plot(coord[:, 0], coord[:, 1], linewidth=5)
                 # plt.imshow(direction_mask[si, 0], alpha=0.6)
                 plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+
+                _, _, H, W = seg_mask.shape
+                for x in range(0, W, 5):
+                    for y in range(0, H, 5):
+                        angle = np.deg2rad((direction[si, y, x, 0] - 1)*10)
+                        dx = R * np.cos(angle)
+                        dy = R * np.sin(angle)
+                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3*arr_width, head_length=9*arr_width, overhang=-0.2, facecolor=(1, 0, 0, 0.6))
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
@@ -1083,6 +1098,34 @@ def viz_model_preds_inst(version,
                 plt.setp(ax.spines.values(), linewidth=0)
 
                 ax = plt.subplot(gs[1, :])
+                ax.get_xaxis().set_ticks([])
+                ax.get_yaxis().set_ticks([])
+
+                # plt.imshow(direction[si, ..., 0], alpha=0.6)
+                # for coord in simplified_coords:
+                #     plt.plot(coord[:, 0], coord[:, 1], linewidth=5)
+                # plt.imshow(direction_mask[si, 0], alpha=0.6)
+                plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+                R = 2
+                arr_width = 1
+                _, _, H, W = seg_mask.shape
+                for x in range(0, W, 5):
+                    for y in range(0, H, 5):
+                        angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
+                        dx = R * np.cos(angle)
+                        dy = R * np.sin(angle)
+                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3*arr_width, head_length=9*arr_width, overhang=-0.2, facecolor=(0, 0, 1, 0.6))
+
+                # plot static map (improves visualization)
+                rec = loader.dataset.ixes[counter]
+                plt.xlim((0, binimgs.shape[3]))
+                plt.ylim((0, binimgs.shape[2]))
+                plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
+                plt.setp(ax.spines.values(), linewidth=0)
+
+                ax = plt.subplot(gs[2, :])
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
                 plt.setp(ax.spines.values(), linewidth=0)
