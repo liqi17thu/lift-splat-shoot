@@ -23,6 +23,7 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from PIL import Image
 import matplotlib.patches as mpatches
+from shapely.geometry import LineString
 
 from .data import compile_data, MAP, NuscData
 from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
@@ -1057,6 +1058,9 @@ def viz_model_preds_inst(version,
 
                         # lane_coordinate = connect_by_direction(full_lane_coord, direction[si])
                         lane_coordinate = sort_points_by_dist(lane_coordinate)
+                        # line = LineString(lane_coordinate)
+                        # line = line.simplify(tolerance=1.5)
+                        # lane_coordinate = np.asarray(list(line.coords)).reshape((-1, 2))
                         lane_coordinate = lane_coordinate.astype('int32')
                         lane_coordinate = connect_by_direction(lane_coordinate, direction[si])
                         simplified_coords.append(lane_coordinate)
