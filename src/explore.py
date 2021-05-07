@@ -127,14 +127,14 @@ def gen_data(version,
         plt.xticks([])
         plt.yticks([])
         R = 2
-        arr_width= 1
+        arr_width = 0.5
         for coord in coords:
             x = coord[0]
             y = coord[1]
             angle = np.deg2rad((forward_mask[y, x] - 1) * 10)
             dx = R * np.cos(angle)
             dy = R * np.sin(angle)
-            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3 * arr_width, head_length=9 * arr_width, overhang=-0.2)
+            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5 * arr_width, head_length=9 * arr_width, overhang=0.)
         plt.savefig(forward_path)
         print(forward_path)
 
@@ -150,7 +150,7 @@ def gen_data(version,
             angle = np.deg2rad((backward_mask[y, x] - 1) * 10)
             dx = R * np.cos(angle)
             dy = R * np.sin(angle)
-            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3 * arr_width, head_length=9 * arr_width, overhang=-0.2)
+            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5 * arr_width, head_length=9 * arr_width, overhang=0.)
         plt.savefig(backward_path)
         print(backward_path)
 
@@ -914,7 +914,7 @@ def viz_model_preds_inst(version,
     else:
         raise NotImplementedError
 
-    model.load_state_dict(torch.load(modelf))
+    model.load_state_dict(torch.load(modelf), strict=False)
     model.to(device)
 
     dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
@@ -1077,22 +1077,31 @@ def viz_model_preds_inst(version,
                 ax.get_yaxis().set_ticks([])
 
                 R = 2
-                arr_width = 1
-                # plt.imshow(direction[si, ..., 0], alpha=0.6)
-                # for coord in simplified_coords:
-                #     plt.plot(coord[:, 0], coord[:, 1], linewidth=5)
-                # plt.imshow(direction_mask[si, 0], alpha=0.6)
-                plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-                plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-                plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+                arr_width = 0.5
+                # plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                # plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                # plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
-                _, _, H, W = seg_mask.shape
-                for x in range(0, W, 5):
-                    for y in range(0, H, 5):
+                for coord in simplified_coords:
+                    for i in range(len(coord)):
+                        x, y = coord[i, 0], coord[i, 1]
                         angle = np.deg2rad((direction[si, y, x, 0] - 1)*10)
+                        # angle = np.deg2rad((direction_mask[si, 0, y, x] - 1)*10)
                         dx = R * np.cos(angle)
                         dy = R * np.sin(angle)
-                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3*arr_width, head_length=9*arr_width, overhang=-0.2, facecolor=(1, 0, 0, 0.6))
+                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(1, 0, 0, 0.6))
+
+                for coord in simplified_coords:
+                    for i in range(len(coord)):
+                        x, y = coord[i, 0], coord[i, 1]
+                        angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
+                        # angle = np.deg2rad((direction_mask[si, 1, y, x] - 1)*10)
+                        dx = R * np.cos(angle)
+                        dy = R * np.sin(angle)
+                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(0, 0, 1, 0.6))
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
@@ -1105,22 +1114,21 @@ def viz_model_preds_inst(version,
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
 
-                # plt.imshow(direction[si, ..., 0], alpha=0.6)
-                # for coord in simplified_coords:
-                #     plt.plot(coord[:, 0], coord[:, 1], linewidth=5)
-                # plt.imshow(direction_mask[si, 0], alpha=0.6)
                 plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
-                R = 2
-                arr_width = 1
-                _, _, H, W = seg_mask.shape
-                for x in range(0, W, 5):
-                    for y in range(0, H, 5):
+                # plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+
+                for coord in simplified_coords:
+                    for i in range(len(coord)):
+                        x, y = coord[i, 0], coord[i, 1]
                         angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
+                        # angle = np.deg2rad((direction_mask[si, 1, y, x] - 1)*10)
                         dx = R * np.cos(angle)
                         dy = R * np.sin(angle)
-                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3*arr_width, head_length=9*arr_width, overhang=-0.2, facecolor=(0, 0, 1, 0.6))
+                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(0, 0, 1, 0.6))
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
