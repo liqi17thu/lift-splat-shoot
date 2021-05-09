@@ -914,7 +914,8 @@ def viz_model_preds_inst(version,
     else:
         raise NotImplementedError
 
-    model.load_state_dict(torch.load(modelf), strict=False)
+    # model.load_state_dict(torch.load(modelf), strict=False)
+    model.load_state_dict(torch.load(modelf))
     model.to(device)
 
     dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
@@ -927,8 +928,8 @@ def viz_model_preds_inst(version,
 
     val = 0.01
     fH, fW = final_dim
-    plt.figure(figsize=(3*fW*val, (4.5*fW)*val))
-    gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(1.5*fW, 1.5*fW, 1.5*fW))
+    plt.figure(figsize=(3*fW*val, (3*fW)*val))
+    gs = mpl.gridspec.GridSpec(2, 3, height_ratios=(1.5*fW, 1.5*fW))
 
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
@@ -1078,42 +1079,6 @@ def viz_model_preds_inst(version,
 
                 R = 2
                 arr_width = 0.5
-                # plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-                # plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-                # plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
-                # plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-                # plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-                # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
-
-                for coord in simplified_coords:
-                    for i in range(len(coord)):
-                        x, y = coord[i, 0], coord[i, 1]
-                        angle = np.deg2rad((direction[si, y, x, 0] - 1)*10)
-                        # angle = np.deg2rad((direction_mask[si, 0, y, x] - 1)*10)
-                        dx = R * np.cos(angle)
-                        dy = R * np.sin(angle)
-                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(1, 0, 0, 0.6))
-
-                for coord in simplified_coords:
-                    for i in range(len(coord)):
-                        x, y = coord[i, 0], coord[i, 1]
-                        angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
-                        # angle = np.deg2rad((direction_mask[si, 1, y, x] - 1)*10)
-                        dx = R * np.cos(angle)
-                        dy = R * np.sin(angle)
-                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(0, 0, 1, 0.6))
-
-                # plot static map (improves visualization)
-                rec = loader.dataset.ixes[counter]
-                plt.xlim((0, binimgs.shape[3]))
-                plt.ylim((0, binimgs.shape[2]))
-                plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
-                plt.setp(ax.spines.values(), linewidth=0)
-
-                ax = plt.subplot(gs[1, :])
-                ax.get_xaxis().set_ticks([])
-                ax.get_yaxis().set_ticks([])
-
                 plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
@@ -1121,14 +1086,21 @@ def viz_model_preds_inst(version,
                 # plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
-                for coord in simplified_coords:
-                    for i in range(len(coord)):
-                        x, y = coord[i, 0], coord[i, 1]
-                        angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
-                        # angle = np.deg2rad((direction_mask[si, 1, y, x] - 1)*10)
-                        dx = R * np.cos(angle)
-                        dy = R * np.sin(angle)
-                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(0, 0, 1, 0.6))
+                # for coord in simplified_coords:
+                #     for i in range(len(coord)):
+                #         x, y = coord[i, 0], coord[i, 1]
+                #         angle = np.deg2rad((direction[si, y, x, 0] - 1)*10)
+                #         # angle = np.deg2rad((direction_mask[si, 0, y, x] - 1)*10)
+                #         dx = R * np.cos(angle)
+                #         dy = R * np.sin(angle)
+                #         plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(1, 0, 0, 0.6))
+
+                #         x, y = coord[i, 0], coord[i, 1]
+                #         angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
+                #         # angle = np.deg2rad((direction_mask[si, 1, y, x] - 1)*10)
+                #         dx = R * np.cos(angle)
+                #         dy = R * np.sin(angle)
+                #         plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(0, 0, 1, 0.6))
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
@@ -1137,7 +1109,8 @@ def viz_model_preds_inst(version,
                 plt.imshow(car_img, extent=[200-15, 200+15, 100-12, 100+12])
                 plt.setp(ax.spines.values(), linewidth=0)
 
-                ax = plt.subplot(gs[2, :])
+
+                ax = plt.subplot(gs[1, :])
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
                 plt.setp(ax.spines.values(), linewidth=0)

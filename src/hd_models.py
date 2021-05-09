@@ -67,7 +67,7 @@ class CamEncode(nn.Module):
 
 
 class BevEncode(nn.Module):
-    def __init__(self, inC, outC, instance_seg=True, embedded_dim=16):
+    def __init__(self, inC, outC, instance_seg=True, direction=True, embedded_dim=16, direction_dim=37):
         super(BevEncode, self).__init__()
         self.instance_seg = instance_seg
 
@@ -102,6 +102,17 @@ class BevEncode(nn.Module):
                 nn.Conv2d(128, embedded_dim, kernel_size=1, padding=0),
             )
 
+        if direction:
+            self.up1_direction = Up(64 + 256, 256, scale_factor=4)
+            self.up2_direction = nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear',
+                            align_corners=True),
+                nn.Conv2d(256, 128, kernel_size=3, padding=1, bias=False),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(128, direction_dim, kernel_size=1, padding=0),
+            )
+
     def forward(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
@@ -114,12 +125,13 @@ class BevEncode(nn.Module):
         x = self.up1(x2, x1)
         x = self.up2(x)
 
-        if self.instance_seg:
-            x_embedded = self.up1_embedded(x2, x1)
-            x_embedded = self.up2_embedded(x_embedded)
-            return x, x_embedded
-        else:
-            return x
+        x_embedded = self.up1_embedded(x2, x1)
+        x_embedded = self.up2_embedded(x_embedded)
+
+        x_direction = self.up1_embedded(x2, x1)
+        x_direction = self.up2_direction(x_direction)
+
+        return x, x_embedded, x_direction
 
 
 class HDMapNet(nn.Module):

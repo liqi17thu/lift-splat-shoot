@@ -126,7 +126,8 @@ def train(version='mini',
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'HDMapNet':
-        model = HDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+        model = HDMapNet(xbound, ybound, outC=outC, cam_encoding=False, camC=3)
+        # model = HDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'temporal_VPN':
