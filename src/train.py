@@ -149,6 +149,8 @@ def train(version='mini',
         for name, param in model.named_parameters():
             if 'bevencode.up' in name or 'bevencode.layer3' in name:
                 param.requires_grad = True
+            # elif 'conv_out' in name:
+            #     param.requires_grad = True
             else:
                 param.requires_grad = False
     model.cuda()
