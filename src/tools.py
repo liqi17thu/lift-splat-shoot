@@ -880,14 +880,14 @@ def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken
         target_point = np.array([last_point[0] + unit_vector[0], last_point[1] + unit_vector[1]])
         dist_metric = np.linalg.norm(coords - target_point, axis=-1)
         idx = np.argmin(dist_metric)
-        if dist_metric[idx] > 35:
+        if dist_metric[idx] > 50:
             break
 
         sorted_points.append(deepcopy(coords[idx]))
         sorted_indices.append(idx)
 
         # NMS
-        coords[np.linalg.norm(coords - last_point, axis=-1) < 13] = 9999999
+        coords[np.linalg.norm(coords - last_point, axis=-1) < 8] = 9999999
 
         inverse_deg = (180 + deg) % 360
         target_direction = 10 * (direction_mask[tuple(np.flip(sorted_points[-1]))] - 1)
@@ -897,7 +897,7 @@ def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken
         taken_direction[tuple(np.flip(sorted_points[-1]))][taken] = True
 
 
-def connect_by_direction(coords, direction_mask, step=10):
+def connect_by_direction(coords, direction_mask, step=5):
     # num_points = coords.shape[0]
     # float_coords = coords.astype('float')
     # diff_matrix = np.repeat(float_coords[:, None], num_points, 1) - float_coords

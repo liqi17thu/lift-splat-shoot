@@ -914,7 +914,8 @@ def viz_model_preds_inst(version,
     else:
         raise NotImplementedError
 
-    model.load_state_dict(torch.load(modelf), strict=False)
+    # model.load_state_dict(torch.load(modelf), strict=False)
+    model.load_state_dict(torch.load(modelf))
     model.to(device)
 
     dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
@@ -927,8 +928,6 @@ def viz_model_preds_inst(version,
 
     val = 0.01
     fH, fW = final_dim
-    # plt.figure(figsize=(3*fW*val, (4.5*fW)*val))
-    # gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(1.5*fW, 1.5*fW, 1.5*fW))
     plt.figure(figsize=(3*fW*val, (3*fW)*val))
     gs = mpl.gridspec.GridSpec(2, 3, height_ratios=(1.5*fW, 1.5*fW))
 
