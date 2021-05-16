@@ -296,8 +296,8 @@ class NuscData(torch.utils.data.Dataset):
         forward_mask[1][(forward_mask[2] != 0) | (contour_thick_mask != 0)] = 0
         forward_mask = forward_mask.sum(0)
 
-        line_backward_mask, _ = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness, type='backward')
-        contour_backward_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness, type='backward')
+        line_backward_mask, _ = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness+4, type='backward')
+        contour_backward_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness+4, type='backward')
         backward_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]))
         backward_mask[3] = contour_backward_mask
         backward_mask[2] = line_backward_mask[2]
@@ -306,11 +306,11 @@ class NuscData(torch.utils.data.Dataset):
         backward_mask[1][(backward_mask[2] != 0) | (contour_thick_mask != 0)] = 0
         backward_mask = backward_mask.sum(0)
 
-        forward_mask = label_onehot_encoding(torch.tensor(forward_mask), 37)
-        backward_mask = label_onehot_encoding(torch.tensor(backward_mask), 37)
-        direction_mask = forward_mask
-        direction_mask[backward_mask != 0] = 1.
-        direction_mask = direction_mask / direction_mask.sum(0, keepdim=True)
+        # forward_mask = label_onehot_encoding(torch.tensor(forward_mask), 37)
+        # backward_mask = label_onehot_encoding(torch.tensor(backward_mask), 37)
+        # direction_mask = forward_mask
+        # direction_mask[backward_mask != 0] = 1.
+        # direction_mask = direction_mask / direction_mask.sum(0, keepdim=True)
 
         return torch.Tensor(seg_mask), torch.Tensor(inst_mask), torch.Tensor(forward_mask), torch.Tensor(backward_mask)
 

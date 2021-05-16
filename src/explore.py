@@ -109,6 +109,7 @@ def gen_data(version,
         inst_path = lidar_top_path.split('.')[0] + '_inst_mask.png'
         forward_path = lidar_top_path.split('.')[0] + '_forward_mask.png'
         backward_path = lidar_top_path.split('.')[0] + '_backward_mask.png'
+        direct_path = lidar_top_path.split('.')[0] + '_direct_mask.png'
         if os.path.exists(seg_path) and os.path.exists(inst_path) and not overwrite:
             continue
 
@@ -119,23 +120,28 @@ def gen_data(version,
         Image.fromarray(seg_mask * 10).save(seg_path)
         inst_mask = (inst_mask * 30).numpy().sum(0).astype('uint8')
         Image.fromarray(inst_mask).save(inst_path)
+
+
         forward_mask = redundant_filter(forward_mask)
         coords = np.where(forward_mask != 0)
         coords = np.stack([coords[1], coords[0]], -1)
         plt.figure(figsize=(8, 4))
         plt.xticks([])
         plt.yticks([])
-        R = 2
-        arr_width= 1
+        plt.xlim(0, 800)
+        plt.xlim(0, 400)
+        R = 1
+        arr_width= 0.5
         for coord in coords:
             x = coord[0]
             y = coord[1]
             angle = np.deg2rad((forward_mask[y, x] - 1) * 10)
             dx = R * np.cos(angle)
             dy = R * np.sin(angle)
-            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3 * arr_width, head_length=9 * arr_width, overhang=-0.2)
+            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3 * arr_width, head_length=5 * arr_width, facecolor=(1, 0, 0, 0.5))
+
         plt.savefig(forward_path)
-        print(forward_path)
+        # print(forward_path)
 
         backward_mask = redundant_filter(backward_mask)
         coords = np.where(backward_mask != 0)
@@ -143,23 +149,45 @@ def gen_data(version,
         plt.figure(figsize=(8, 4))
         plt.xticks([])
         plt.yticks([])
+        plt.xlim(0, 800)
+        plt.xlim(0, 400)
         for coord in coords:
             x = coord[0]
             y = coord[1]
             angle = np.deg2rad((backward_mask[y, x] - 1) * 10)
             dx = R * np.cos(angle)
             dy = R * np.sin(angle)
-            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3 * arr_width, head_length=9 * arr_width, overhang=-0.2)
+            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3 * arr_width, head_length=5 * arr_width, facecolor=(0, 0, 1, 0.5))
         plt.savefig(backward_path)
-        print(backward_path)
-
-        # forward_mask = torch.stack([forward_mask, forward_mask % 100, forward_mask % 200], -1)
-        # Image.fromarray((forward_mask * 40).numpy().astype('uint8')).save(forward_path)
-        # print(forward_path)
-        #
-        # backward_mask = torch.stack([backward_mask, backward_mask % 100, backward_mask % 200], -1)
-        # Image.fromarray((backward_mask * 40).numpy().astype('uint8')).save(backward_path)
         # print(backward_path)
+
+        fig = plt.figure(figsize=(8, 4))
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.axis('off')
+        plt.xlim(0, 800)
+        plt.xlim(0, 400)
+        coords = np.where(forward_mask != 0)
+        coords = np.stack([coords[1], coords[0]], -1)
+        for coord in coords:
+            x = coord[0]
+            y = coord[1]
+            angle = np.deg2rad((forward_mask[y, x] - 1) * 10)
+            dx = R * np.cos(angle)
+            dy = R * np.sin(angle)
+            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=6 * arr_width, head_length=9 * arr_width, facecolor=(1, 0, 0, 0.5))
+
+        coords = np.where(backward_mask != 0)
+        coords = np.stack([coords[1], coords[0]], -1)
+        for coord in coords:
+            x = coord[0]
+            y = coord[1]
+            angle = np.deg2rad((backward_mask[y, x] - 1) * 10)
+            dx = R * np.cos(angle)
+            dy = R * np.sin(angle)
+            plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=6 * arr_width, head_length=9 * arr_width, facecolor=(0, 0, 1, 0.5))
+        plt.savefig(direct_path)
+        # print(direct_path)
+
 
 
 def viz_ipm_with_label(version,
