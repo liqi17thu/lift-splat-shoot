@@ -476,7 +476,7 @@ def get_accuracy_precision_recall_multi_class(preds, binimgs):
 import random
 from .postprocess import LaneNetPostProcessor
 
-def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn, scale_seg=1.0, scale_var=1.0, scale_dist=1.0, use_tqdm=True, eval_mAP=False):
+def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn, scale_seg=1.0, scale_var=1.0, scale_dist=1.0, angle_class=37, use_tqdm=True, eval_mAP=False):
 
     lane_seg_metric = LaneSegMetric()
     if eval_mAP:
@@ -540,7 +540,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn,
             total_final_loss += final_loss
 
             # angle diff
-            total_angle_diff += calc_angle_diff(direction, direction_mask) * bs
+            total_angle_diff += calc_angle_diff(direction, direction_mask, angle_class) * bs
 
             # iou
             intersect, union, _ = get_batch_iou_multi_class(preds, binimgs)
@@ -710,19 +710,19 @@ def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx, alpha_poly=0.6, alpha
         plt.plot(pts[:, 0], pts[:, 1], c=(0., 0., 1.), alpha=alpha_poly, linewidth=5)
 
 
-def get_discrete_degree(vec):
+def get_discrete_degree(vec, angle_class=36):
     deg = np.mod(np.degrees(np.arctan2(vec[1], vec[0])), 360)
-    deg = (int(deg / 10 + 0.5) % 36) + 1
-    # deg = (int(deg + 0.5) % 360) + 1
+    deg = (int(deg / (360 / angle_class) + 0.5) % angle_class) + 1
     return deg
 
 
-def calc_angle_diff(pred_mask, gt_mask):
+def calc_angle_diff(pred_mask, gt_mask, angle_class):
+    per_angle = float(360. / angle_class)
     eval_mask = 1 - gt_mask[:, 0]
-    pred_direction = torch.topk(pred_mask, 2, dim=1)[1] - 1
-    gt_direction = torch.topk(gt_mask, 2, dim=1)[1] - 1
-    pred_direction *= 10
-    gt_direction *= 10
+    pred_direction = (torch.topk(pred_mask, 2, dim=1)[1] - 1).float()
+    gt_direction = (torch.topk(gt_mask, 2, dim=1)[1] - 1).float()
+    pred_direction *= per_angle
+    gt_direction *= per_angle
     pred_direction = pred_direction[:, :, None, :, :].repeat(1, 1, 2, 1, 1)
     gt_direction = gt_direction[:, None, :, :, :].repeat(1, 2, 1, 1, 1)
     diff_mask = torch.abs(pred_direction - gt_direction)

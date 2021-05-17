@@ -38,6 +38,7 @@ class NuscData(torch.utils.data.Dataset):
 
         self.preprocess = data_aug_conf['preprocess']
         self.thickness = data_aug_conf['line_width']
+        self.angle_class = data_aug_conf['angle_class']
 
         dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
         self.dx, self.bx, self.nx = dx.numpy(), bx.numpy(), nx.numpy()
@@ -285,8 +286,8 @@ class NuscData(torch.utils.data.Dataset):
         seg_mask[1] = np.any(line_mask[:2], axis=0) & (seg_mask[2] == 0) & (contour_thick_mask == 0)
         seg_mask[0] = 1 - np.any(seg_mask, axis=0)
 
-        line_forward_mask, _ = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness + 4, type='forward')
-        contour_forward_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness + 4, type='forward')
+        line_forward_mask, _ = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness + 4, type='forward', angle_class=self.angle_class)
+        contour_forward_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness + 4, type='forward', angle_class=self.angle_class)
 
         forward_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]))
         forward_mask[3] = contour_forward_mask
@@ -296,8 +297,8 @@ class NuscData(torch.utils.data.Dataset):
         forward_mask[1][(forward_mask[2] != 0) | (contour_thick_mask != 0)] = 0
         forward_mask = forward_mask.sum(0)
 
-        line_backward_mask, _ = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness + 4, type='backward')
-        contour_backward_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness + 4, type='backward')
+        line_backward_mask, _ = gen_topdown_mask(self.nusc, self.nusc_maps, rec, self.patch_size, self.canvas_size, seg_layers=line_seg_layers, thickness=self.thickness + 4, type='backward', angle_class=self.angle_class)
+        contour_backward_mask, _ = extract_contour(np.any(lane_mask, 0).astype('uint8'), self.canvas_size, thickness=self.thickness + 4, type='backward', angle_class=self.angle_class)
         backward_mask = np.zeros((4, self.canvas_size[0], self.canvas_size[1]))
         backward_mask[3] = contour_backward_mask
         backward_mask[2] = line_backward_mask[2]
@@ -306,8 +307,8 @@ class NuscData(torch.utils.data.Dataset):
         backward_mask[1][(backward_mask[2] != 0) | (contour_thick_mask != 0)] = 0
         backward_mask = backward_mask.sum(0)
 
-        forward_mask = label_onehot_encoding(torch.tensor(forward_mask), 37)
-        backward_mask = label_onehot_encoding(torch.tensor(backward_mask), 37)
+        forward_mask = label_onehot_encoding(torch.tensor(forward_mask), self.angle_class+1)
+        backward_mask = label_onehot_encoding(torch.tensor(backward_mask), self.angle_class+1)
         direction_mask = forward_mask
         direction_mask[backward_mask != 0] = 1.
         direction_mask = direction_mask / direction_mask.sum(0, keepdim=True)

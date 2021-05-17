@@ -64,6 +64,7 @@ def train(version='mini',
           final_dim=(128, 352),
           ncams=6,
           line_width=5,
+          angle_class=36,
           max_grad_norm=5.0,
           pos_weight=2.13,
           logdir='./runs',
@@ -108,6 +109,7 @@ def train(version='mini',
                     'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
                     'Ncams': ncams,
+                    'angle_class': angle_class
                 }
 
     if 'temporal' in method:
@@ -133,7 +135,7 @@ def train(version='mini',
     elif method == 'temporal_VPN':
         model = TemporalVPNet(xbound, ybound, outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'VPN':
-        model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+        model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim, direction_dim=angle_class+1)
     elif method == 'VIT':
         model = VITNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'PP':
@@ -192,6 +194,7 @@ def train(version='mini',
                                     translation.cuda(),
                                     yaw_pitch_roll.cuda(),
                                     )
+
             binimgs = binimgs.cuda()
             inst_mask = inst_mask.cuda().sum(1)
             direction_mask = direction_mask.cuda()
@@ -200,7 +203,7 @@ def train(version='mini',
             direction_loss = direction_loss_fn(torch.softmax(direction, 1), direction_mask)
             lane_mask = (1 - direction_mask[:, 0]).unsqueeze(1)
             direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * direction_loss.shape[1] + 1e-6)
-            angle_diff = calc_angle_diff(direction, direction_mask)
+            angle_diff = calc_angle_diff(direction, direction_mask, angle_class)
             final_loss = seg_loss * scale_seg + var_loss * scale_var + dist_loss * scale_dist + direction_loss * 0.2
             final_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
@@ -225,7 +228,7 @@ def train(version='mini',
                 writer.add_scalar('train/step_time', t1 - t0, counter)
 
             if counter % val_step == 0:
-                val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn, scale_seg, scale_var, scale_dist)
+                val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn, scale_seg, scale_var, scale_dist, angle_class)
                 if local_rank == 0:
                     print('VAL', val_info)
                     writer.add_scalar('val/seg_loss', val_info['seg_loss'], counter)
