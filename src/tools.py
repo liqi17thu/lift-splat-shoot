@@ -856,7 +856,7 @@ def greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted
         dist_matrix[:, idx] = np.inf
         direction_matrix[:, idx] = (0, 0)
 
-def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step=5):
+def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step=5, per_deg=10):
     while True:
         last_idx = sorted_indices[-1]
         last_point = tuple(np.flip(sorted_points[-1]))
@@ -872,7 +872,7 @@ def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken
         if direction == 0:
             continue
 
-        deg = 10 * (direction - 1)
+        deg = per_deg * (direction - 1)
         unit_vector = step * np.array([np.cos(np.deg2rad(deg)), np.sin(np.deg2rad(deg))])
 
         last_point = deepcopy(sorted_points[-1])
@@ -880,24 +880,24 @@ def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken
         target_point = np.array([last_point[0] + unit_vector[0], last_point[1] + unit_vector[1]])
         dist_metric = np.linalg.norm(coords - target_point, axis=-1)
         idx = np.argmin(dist_metric)
-        if dist_metric[idx] > 50:
+        if dist_metric[idx] > 60:
             break
 
         sorted_points.append(deepcopy(coords[idx]))
         sorted_indices.append(idx)
 
         # NMS
-        coords[np.linalg.norm(coords - last_point, axis=-1) < 8] = 9999999
+        coords[np.linalg.norm(coords - last_point, axis=-1) < step+2] = 9999999
 
         inverse_deg = (180 + deg) % 360
-        target_direction = 10 * (direction_mask[tuple(np.flip(sorted_points[-1]))] - 1)
+        target_direction = per_deg * (direction_mask[tuple(np.flip(sorted_points[-1]))] - 1)
         tmp = np.abs(target_direction - inverse_deg)
         tmp = torch.min(tmp, 360 - tmp)
         taken = np.argmin(tmp)
         taken_direction[tuple(np.flip(sorted_points[-1]))][taken] = True
 
 
-def connect_by_direction(coords, direction_mask, step=5):
+def connect_by_direction(coords, direction_mask, step=5, per_deg=10):
     # num_points = coords.shape[0]
     # float_coords = coords.astype('float')
     # diff_matrix = np.repeat(float_coords[:, None], num_points, 1) - float_coords
@@ -910,10 +910,10 @@ def connect_by_direction(coords, direction_mask, step=5):
     sorted_indices = [0]
     taken_direction = np.zeros_like(direction_mask, dtype=np.bool)
 
-    connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step)
+    connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step, per_deg)
     sorted_points.reverse()
     sorted_indices.reverse()
-    connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step)
+    connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step, per_deg)
 
     return np.stack(sorted_points, 0)
 

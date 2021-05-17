@@ -847,6 +847,7 @@ def viz_model_preds_inst(version,
                             H=900, W=1600,
                             resize_lim=(0.193, 0.225),
                             final_dim=(128, 352),
+                            angle_class=36,
                             # final_dim=(300, 400),
                             bot_pct_lim=(0.0, 0.22),
                             rot_lim=(-5.4, 5.4),
@@ -878,6 +879,7 @@ def viz_model_preds_inst(version,
                     'line_width': line_width,
                     'preprocess': preprocess,
                     'bot_pct_lim': bot_pct_lim,
+                    'angle_class': angle_class,
                     'cams': cams,
                     'Ncams': 6,
                 }
@@ -1063,7 +1065,7 @@ def viz_model_preds_inst(version,
                         # line = line.simplify(tolerance=1.5)
                         # lane_coordinate = np.asarray(list(line.coords)).reshape((-1, 2))
                         lane_coordinate = lane_coordinate.astype('int32')
-                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si])
+                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si], step=8, per_deg=360/angle_class)
                         simplified_coords.append(lane_coordinate)
 
                     # inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
