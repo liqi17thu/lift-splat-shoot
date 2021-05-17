@@ -18,6 +18,7 @@ from .data import compile_data
 from .tools import get_batch_iou_multi_class, get_val_info
 from .tools import get_accuracy_precision_recall_multi_class
 from .tools import FocalLoss, SimpleLoss, DiscriminativeLoss
+from .tools import calc_angle_diff
 from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet, TemporalVPNet
 # from .vit_model import VITNet
@@ -63,6 +64,7 @@ def train(version='mini',
           final_dim=(128, 352),
           ncams=6,
           line_width=5,
+          angle_class=36,
           max_grad_norm=5.0,
           pos_weight=2.13,
           logdir='./runs',
@@ -107,6 +109,7 @@ def train(version='mini',
                     'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
                     'Ncams': ncams,
+                    'angle_class': angle_class
                 }
 
     if 'temporal' in method:
@@ -125,13 +128,14 @@ def train(version='mini',
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'HDMapNet':
-        model = HDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+        model = HDMapNet(xbound, ybound, outC=outC, cam_encoding=False, camC=3)
+        # model = HDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'temporal_VPN':
         model = TemporalVPNet(xbound, ybound, outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'VPN':
-        model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+        model = VPNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim, direction_dim=angle_class+1)
     elif method == 'VIT':
         model = VITNet(outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
     elif method == 'PP':
@@ -148,6 +152,8 @@ def train(version='mini',
         for name, param in model.named_parameters():
             if 'bevencode.up' in name or 'bevencode.layer3' in name:
                 param.requires_grad = True
+            # elif 'conv_out' in name:
+            #     param.requires_grad = True
             else:
                 param.requires_grad = False
     model.cuda()
@@ -188,6 +194,7 @@ def train(version='mini',
                                     translation.cuda(),
                                     yaw_pitch_roll.cuda(),
                                     )
+
             binimgs = binimgs.cuda()
             inst_mask = inst_mask.cuda().sum(1)
             direction_mask = direction_mask.cuda()
@@ -195,7 +202,8 @@ def train(version='mini',
             var_loss, dist_loss, reg_loss = embedded_loss_fn(embedded, inst_mask)
             direction_loss = direction_loss_fn(torch.softmax(direction, 1), direction_mask)
             lane_mask = (1 - direction_mask[:, 0]).unsqueeze(1)
-            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * 361 + 1e-6)
+            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * direction_loss.shape[1] + 1e-6)
+            angle_diff = calc_angle_diff(direction, direction_mask, angle_class)
             final_loss = seg_loss * scale_seg + var_loss * scale_var + dist_loss * scale_dist + direction_loss * 0.2
             final_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
@@ -211,6 +219,7 @@ def train(version='mini',
                 writer.add_scalar('train/reg_loss', reg_loss, counter)
                 writer.add_scalar('train/direction_loss', direction_loss, counter)
                 writer.add_scalar('train/final_loss', final_loss, counter)
+                writer.add_scalar('train/angle_diff', angle_diff, counter)
 
             if counter % 50 == 0 and local_rank == 0:
                 _, _, ious = get_batch_iou_multi_class(preds, binimgs)
@@ -219,7 +228,7 @@ def train(version='mini',
                 writer.add_scalar('train/step_time', t1 - t0, counter)
 
             if counter % val_step == 0:
-                val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn, scale_seg, scale_var, scale_dist)
+                val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn, scale_seg, scale_var, scale_dist, angle_class)
                 if local_rank == 0:
                     print('VAL', val_info)
                     writer.add_scalar('val/seg_loss', val_info['seg_loss'], counter)
@@ -228,6 +237,7 @@ def train(version='mini',
                     writer.add_scalar('val/reg_loss', val_info['reg_loss'], counter)
                     writer.add_scalar('val/direction_loss', val_info['direction_loss'], counter)
                     writer.add_scalar('val/final_loss', val_info['final_loss'], counter)
+                    writer.add_scalar('val/angle_diff', val_info['angle_diff'], counter)
                     write_log(writer, val_info['iou'], val_info['accuracy'], val_info['precision'], val_info['recall'], 'val', counter)
 
             if counter % val_step == 0 and local_rank == 0:

@@ -5,19 +5,20 @@ Authors: Jonah Philion and Sanja Fidler
 """
 
 import os
+import cv2
 import numpy as np
 import torch
 from tqdm import tqdm
 from pyquaternion import Quaternion
 from PIL import Image
+from shapely import affinity, ops
+from shapely.geometry import LineString, MultiLineString, box, MultiPolygon, Polygon
 from functools import reduce
 
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torchvision
-from .metric import LaneSegMetric
-
 
 # import matplotlib as mpl
 # mpl.use('Agg')
@@ -27,6 +28,7 @@ from nuscenes.utils.data_classes import LidarPointCloud
 from nuscenes.utils.geometry_utils import transform_matrix
 from nuscenes.map_expansion.map_api import NuScenesMap
 
+from .metric import LaneSegMetric
 
 def plane_grid_2d(xbound, ybound):
     xmin, xmax = xbound[0], xbound[1]
@@ -474,7 +476,7 @@ def get_accuracy_precision_recall_multi_class(preds, binimgs):
 import random
 from .postprocess import LaneNetPostProcessor
 
-def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn, scale_seg=1.0, scale_var=1.0, scale_dist=1.0, use_tqdm=True, eval_mAP=False):
+def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn, scale_seg=1.0, scale_var=1.0, scale_dist=1.0, angle_class=37, use_tqdm=True, eval_mAP=False):
 
     lane_seg_metric = LaneSegMetric()
     if eval_mAP:
@@ -503,6 +505,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn,
     total_tp = None
     total_fp = None
     total_fn = None
+    total_angle_diff = 0
     total_AP = 0
     print('running eval...')
     loader = tqdm(valloader) if use_tqdm else valloader
@@ -526,7 +529,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn,
             var_loss, dist_loss, reg_loss = var_loss.item() * bs, dist_loss.item() * bs, reg_loss.item() * bs
             direction_loss = direction_loss_fn(torch.softmax(direction, 1), direction_mask)
             lane_mask = (1 - direction_mask[:, 0]).unsqueeze(1)
-            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * 361 + 1e-6)
+            direction_loss = (direction_loss * lane_mask).sum() / (lane_mask.sum() * direction_loss.shape[1] + 1e-6)
             final_loss = seg_loss * scale_seg + var_loss + scale_var + dist_loss * scale_dist + direction_loss * 0.2
 
             total_seg_loss += seg_loss
@@ -535,6 +538,9 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn,
             total_var_loss += var_loss
             total_direction_loss += direction_loss
             total_final_loss += final_loss
+
+            # angle diff
+            total_angle_diff += calc_angle_diff(direction, direction_mask, angle_class) * bs
 
             # iou
             intersect, union, _ = get_batch_iou_multi_class(preds, binimgs)
@@ -608,6 +614,7 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn,
         'accuracy': total_cor / total_pix,
         'precision': total_tp / (total_tp + total_fp),
         'recall': total_tp / (total_tp + total_fn),
+        'angle_diff': total_angle_diff / len(valloader.dataset),
         'CD_pred (precision)': total_CD1 / total_CD_num1,
         'CD_label (recall)': total_CD2 / total_CD_num2,
         'chamfer_distance': (total_CD1 + total_CD2) / (total_CD_num1 + total_CD_num2),
@@ -639,9 +646,6 @@ def get_nusc_maps(map_folder):
                  ]}
     return nusc_maps
 
-import cv2
-from shapely import affinity, ops
-from shapely.geometry import LineString, MultiLineString, box, MultiPolygon, Polygon
 
 def extract_contour(topdown_seg_mask, canvas_size, thickness=5):
     topdown_seg_mask[topdown_seg_mask != 0] = 255
@@ -706,11 +710,25 @@ def plot_nusc_map(rec, nusc_maps, nusc, scene2map, dx, bx, alpha_poly=0.6, alpha
         plt.plot(pts[:, 0], pts[:, 1], c=(0., 0., 1.), alpha=alpha_poly, linewidth=5)
 
 
-def get_discrete_degree(vec):
+def get_discrete_degree(vec, angle_class=36):
     deg = np.mod(np.degrees(np.arctan2(vec[1], vec[0])), 360)
-    deg = (int(deg / 10 + 0.5) % 36) + 1
-    # deg = (int(deg + 0.5) % 360) + 1
+    deg = (int(deg / (360 / angle_class) + 0.5) % angle_class) + 1
     return deg
+
+
+def calc_angle_diff(pred_mask, gt_mask, angle_class):
+    per_angle = float(360. / angle_class)
+    eval_mask = 1 - gt_mask[:, 0]
+    pred_direction = (torch.topk(pred_mask, 2, dim=1)[1] - 1).float()
+    gt_direction = (torch.topk(gt_mask, 2, dim=1)[1] - 1).float()
+    pred_direction *= per_angle
+    gt_direction *= per_angle
+    pred_direction = pred_direction[:, :, None, :, :].repeat(1, 1, 2, 1, 1)
+    gt_direction = gt_direction[:, None, :, :, :].repeat(1, 2, 1, 1, 1)
+    diff_mask = torch.abs(pred_direction - gt_direction)
+    diff_mask = torch.min(diff_mask, 360 - diff_mask)
+    diff_mask = torch.min(diff_mask[:, 0, 0] + diff_mask[:, 1, 1], diff_mask[:, 1, 0] + diff_mask[:, 0, 1])
+    return ((eval_mask * diff_mask).sum() / (eval_mask.sum() + 1e-6)).item()
 
 
 def get_local_map(nmap, center, stretch, layer_names, line_names):
@@ -838,26 +856,64 @@ def greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted
         dist_matrix[:, idx] = np.inf
         direction_matrix[:, idx] = (0, 0)
 
+def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step=5):
+    while True:
+        last_idx = sorted_indices[-1]
+        last_point = tuple(np.flip(sorted_points[-1]))
+        if not taken_direction[last_point][0]:
+            direction = direction_mask[last_point][0]
+            taken_direction[last_point][0] = True
+        elif not taken_direction[last_point][1]:
+            direction = direction_mask[last_point][1]
+            taken_direction[last_point][1] = True
+        else:
+            break
 
-def connect_by_direction(coords, direction_mask, threshold=100):
-    num_points = coords.shape[0]
-    float_coords = coords.astype('float')
-    diff_matrix = np.repeat(float_coords[:, None], num_points, 1) - float_coords
-    dist_matrix = np.sqrt((diff_matrix ** 2).sum(-1))
-    direction_matrix = diff_matrix / (dist_matrix.reshape(num_points, num_points, 1) + 1e-6)
+        if direction == 0:
+            continue
 
-    sorted_points = [coords[0]]
+        deg = 10 * (direction - 1)
+        unit_vector = step * np.array([np.cos(np.deg2rad(deg)), np.sin(np.deg2rad(deg))])
+
+        last_point = deepcopy(sorted_points[-1])
+        coords[last_idx] = 9999999
+        target_point = np.array([last_point[0] + unit_vector[0], last_point[1] + unit_vector[1]])
+        dist_metric = np.linalg.norm(coords - target_point, axis=-1)
+        idx = np.argmin(dist_metric)
+        if dist_metric[idx] > 50:
+            break
+
+        sorted_points.append(deepcopy(coords[idx]))
+        sorted_indices.append(idx)
+
+        # NMS
+        coords[np.linalg.norm(coords - last_point, axis=-1) < 8] = 9999999
+
+        inverse_deg = (180 + deg) % 360
+        target_direction = 10 * (direction_mask[tuple(np.flip(sorted_points[-1]))] - 1)
+        tmp = np.abs(target_direction - inverse_deg)
+        tmp = torch.min(tmp, 360 - tmp)
+        taken = np.argmin(tmp)
+        taken_direction[tuple(np.flip(sorted_points[-1]))][taken] = True
+
+
+def connect_by_direction(coords, direction_mask, step=5):
+    # num_points = coords.shape[0]
+    # float_coords = coords.astype('float')
+    # diff_matrix = np.repeat(float_coords[:, None], num_points, 1) - float_coords
+    # dist_matrix = np.sqrt((diff_matrix ** 2).sum(-1))
+    # direction_matrix = diff_matrix / (dist_matrix.reshape(num_points, num_points, 1) + 1e-6)
+
+    # dist_matrix[:, 0] = np.inf
+    # direction_matrix[:, 0] = (0, 0)
+    sorted_points = [deepcopy(coords[0])]
     sorted_indices = [0]
-    dist_matrix[:, 0] = np.inf
-    direction_matrix[:, 0] = (0, 0)
     taken_direction = np.zeros_like(direction_mask, dtype=np.bool)
 
-    greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted_indices, sorted_points,
-                   taken_direction, num_points, threshold)
+    connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step)
     sorted_points.reverse()
     sorted_indices.reverse()
-    greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted_indices, sorted_points,
-                   taken_direction, num_points, threshold)
+    connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step)
 
     return np.stack(sorted_points, 0)
 
@@ -866,8 +922,8 @@ def test_function():
     H = 200
     W = 400
     num_points = 20
-    coords = np.stack([np.random.randint(0, H, size=(num_points)), np.random.randint(0, W, size=(num_points))], -1)
-    direction_mask = np.random.randint(0, 361, size=(H, W, 2))
+    coords = np.stack([np.random.randint(0, W, size=(num_points)), np.random.randint(0, H, size=(num_points))], -1)
+    direction_mask = np.random.randint(0, 37, size=(H, W, 2))
     sorted_points = connect_by_direction(coords, direction_mask)
     print(sorted_points)
 

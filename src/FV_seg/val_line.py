@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(description='First-View Segmentation')
 parser.add_argument('--seed', default=42, type=int)
 
 parser.add_argument('--dataroot', default='data/nuScenes', type=str)
-parser.add_argument('--version', default='v1.0-trainval', type=str)
+parser.add_argument('--version', default='v1.0-mini', type=str)
 
 parser.add_argument('--img-size', default=224, type=int)
 parser.add_argument('--bs', default=4, type=int)

@@ -80,7 +80,7 @@ class CamEncode(nn.Module):
 
 
 class BevEncode(nn.Module):
-    def __init__(self, inC, outC, instance_seg=True, direction=True, embedded_dim=16, direction_dim=361):
+    def __init__(self, inC, outC, instance_seg=True, direction=True, embedded_dim=16, direction_dim=37):
         super(BevEncode, self).__init__()
         self.instance_seg = instance_seg
         self.direction = direction
@@ -183,7 +183,7 @@ class ViewFusionModule(nn.Module):
 
 
 class VPNet(nn.Module):
-    def __init__(self, outC, camC=64, instance_seg=True, embedded_dim=16, extrinsic=False, lidar=False, xbound=None, ybound=None, zbound=None):
+    def __init__(self, outC, camC=64, instance_seg=True, embedded_dim=16, extrinsic=False, lidar=False, xbound=None, ybound=None, zbound=None, direction_dim=37):
         super(VPNet, self).__init__()
         self.camC = camC
         self.extrinsic = extrinsic
@@ -202,9 +202,9 @@ class VPNet(nn.Module):
         self.lidar = lidar
         if lidar:
             self.pp = PointPillarEncoder(128, xbound, ybound, zbound)
-            self.bevencode = BevEncode(inC=camC+128, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+            self.bevencode = BevEncode(inC=camC+128, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim, direction_dim=direction_dim)
         else:
-            self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim)
+            self.bevencode = BevEncode(inC=camC, outC=outC, instance_seg=instance_seg, embedded_dim=embedded_dim, direction_dim=direction_dim)
 
 
     def get_Ks_RTs_and_post_RTs(self, intrins, rots, trans, post_rots, post_trans):

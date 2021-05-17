@@ -41,7 +41,7 @@ class PointNet(nn.Module):
 
 
 class PointPillar(nn.Module):
-  def __init__(self, C, xbound, ybound, zbound, embedded_dim=16):
+  def __init__(self, C, xbound, ybound, zbound, embedded_dim=16, direction_dim=37):
     super(PointPillar, self).__init__()
     self.xbound = xbound
     self.ybound = ybound
@@ -86,8 +86,17 @@ class PointPillar(nn.Module):
       nn.ReLU(inplace=True),
       nn.Conv2d(128, embedded_dim, 1),
     )
+    self.direction_conv_out = nn.Sequential(
+      nn.Conv2d(448, 256, 3, padding=1, bias=False),
+      nn.BatchNorm2d(256),
+      nn.ReLU(inplace=True),
+      nn.Conv2d(256, 128, 3, padding=1, bias=False),
+      nn.BatchNorm2d(128),
+      nn.ReLU(inplace=True),
+      nn.Conv2d(128, direction_dim, 1),
+    )
 
-  def forward(self, points, points_mask, 
+  def forward(self, points, points_mask,
     x, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll):
     points_xyz = points[:, :, :3]
     points_feature = points[:, :, 3:]
@@ -105,7 +114,7 @@ class PointPillar(nn.Module):
     points_feature = self.pn(points_feature, voxels['points_mask'])
     voxel_feature = torch_scatter.scatter_mean(
       points_feature,
-      torch.unsqueeze(voxels['voxel_indices'], dim=1), 
+      torch.unsqueeze(voxels['voxel_indices'], dim=1),
       dim=2,
       dim_size=voxels['num_voxels'])
     batch_size = points.size(0)
@@ -117,7 +126,8 @@ class PointPillar(nn.Module):
     voxel_feature2 = self.up2(voxel_feature2)
     voxel_feature3 = self.up3(voxel_feature3)
     voxel_feature = torch.cat([voxel_feature1, voxel_feature2, voxel_feature3], dim=1)
-    return self.conv_out(voxel_feature).transpose(3, 2), self.instance_conv_out(voxel_feature).transpose(3, 2)
+    return self.conv_out(voxel_feature).transpose(3, 2), self.instance_conv_out(voxel_feature).transpose(3, 2), self.direction_conv_out(voxel_feature).transpose(3, 2)
+
 
 
 class PointPillarEncoder(nn.Module):
@@ -174,7 +184,7 @@ class PointPillarEncoder(nn.Module):
     points_feature = self.pn(points_feature, voxels['points_mask'])
     voxel_feature = torch_scatter.scatter_mean(
       points_feature,
-      torch.unsqueeze(voxels['voxel_indices'], dim=1), 
+      torch.unsqueeze(voxels['voxel_indices'], dim=1),
       dim=2,
       dim_size=voxels['num_voxels'])
     batch_size = points.size(0)

@@ -23,6 +23,7 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from PIL import Image
 import matplotlib.patches as mpatches
+from shapely.geometry import LineString
 
 from .data import compile_data, MAP, NuscData
 from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
@@ -139,7 +140,6 @@ def gen_data(version,
             dx = R * np.cos(angle)
             dy = R * np.sin(angle)
             plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=3 * arr_width, head_length=5 * arr_width, facecolor=(1, 0, 0, 0.5))
-
         plt.savefig(forward_path)
         # print(forward_path)
 
@@ -857,7 +857,10 @@ def viz_model_preds_class3(version,
                 counter += 1
 
 
+
+
 from .tools import connect_by_direction
+
 def viz_model_preds_inst(version,
                             modelf,
                             dataroot='data/nuScenes',
@@ -923,8 +926,8 @@ def viz_model_preds_inst(version,
     if method == 'lift_splat':
         model = compile_model(grid_conf, data_aug_conf, outC=outC)
     elif method == 'HDMapNet':
-        # model = HDMapNet(xbound, ybound, outC=outC)
-        model = HDMapNet(xbound, ybound, outC=outC, cam_encoding=False, camC=3)
+        model = HDMapNet(xbound, ybound, outC=outC)
+        # model = HDMapNet(xbound, ybound, outC=outC, cam_encoding=False, camC=3)
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
     elif method == 'VPN':
@@ -938,6 +941,7 @@ def viz_model_preds_inst(version,
     else:
         raise NotImplementedError
 
+    # model.load_state_dict(torch.load(modelf), strict=False)
     model.load_state_dict(torch.load(modelf))
     model.to(device)
 
@@ -970,12 +974,13 @@ def viz_model_preds_inst(version,
     car_img = Image.open('car_3.png')
     model.eval()
     # counter = 1204
-    counter = 72
-    # counter = 44
-    # counter = 0
+    # counter = 80
+    # counter = 72
+    counter = 44
+    counter = 0
     with torch.no_grad():
         for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label, direction_mask) in enumerate(loader):
-            if batchi < 18:
+            if batchi < 11:
                 continue
 
             out, embedded, direction = model(
@@ -1004,11 +1009,11 @@ def viz_model_preds_inst(version,
             embedded = embedded.cpu()
 
             N, C, H, W = embedded.shape
-            embedded_test = embedded.permute(0, 2, 3, 1).reshape(N*H*W, C)
-            embedded_fitted = pca.fit_transform(embedded_test)
-            embedded_fitted = torch.sigmoid(torch.tensor(embedded_fitted)).numpy()
-            embedded_fitted = embedded_fitted.reshape((N, H, W, 3))
-            alpha_channel = np.ones((N, H, W, 1))
+            # embedded_test = embedded.permute(0, 2, 3, 1).reshape(N*H*W, C)
+            # embedded_fitted = pca.fit_transform(embedded_test)
+            # embedded_fitted = torch.sigmoid(torch.tensor(embedded_fitted)).numpy()
+            # embedded_fitted = embedded_fitted.reshape((N, H, W, 3))
+            # alpha_channel = np.ones((N, H, W, 1))
 
             if temporal:
                 imgs = imgs[:, 0]
@@ -1078,8 +1083,14 @@ def viz_model_preds_inst(version,
                         lane_coordinate = np.stack(lane_coordinate)
                         idx = np.where((full_lane_coord == full_lane_coord[0]).all(-1))[0][-1]
                         full_lane_coord = np.concatenate([full_lane_coord[:idx], full_lane_coord[idx+1:]])
-                        lane_coordinate = connect_by_direction(full_lane_coord, direction[si])
-                        # lane_coordinate = sort_points_by_dist(lane_coordinate)
+
+                        # lane_coordinate = connect_by_direction(full_lane_coord, direction[si])
+                        lane_coordinate = sort_points_by_dist(lane_coordinate)
+                        # line = LineString(lane_coordinate)
+                        # line = line.simplify(tolerance=1.5)
+                        # lane_coordinate = np.asarray(list(line.coords)).reshape((-1, 2))
+                        lane_coordinate = lane_coordinate.astype('int32')
+                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si])
                         simplified_coords.append(lane_coordinate)
 
                     # inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
@@ -1093,11 +1104,30 @@ def viz_model_preds_inst(version,
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
 
-                # plt.imshow(direction[si, ..., 0], alpha=0.6)
-                # plt.imshow(direction_mask[si, 0], alpha=0.6)
+                R = 2
+                arr_width = 0.5
                 plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+
+                # for coord in simplified_coords:
+                #     for i in range(len(coord)):
+                #         x, y = coord[i, 0], coord[i, 1]
+                #         angle = np.deg2rad((direction[si, y, x, 0] - 1)*10)
+                #         # angle = np.deg2rad((direction_mask[si, 0, y, x] - 1)*10)
+                #         dx = R * np.cos(angle)
+                #         dy = R * np.sin(angle)
+                #         plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(1, 0, 0, 0.6))
+
+                #         x, y = coord[i, 0], coord[i, 1]
+                #         angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
+                #         # angle = np.deg2rad((direction_mask[si, 1, y, x] - 1)*10)
+                #         dx = R * np.cos(angle)
+                #         dy = R * np.sin(angle)
+                #         plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(0, 0, 1, 0.6))
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
