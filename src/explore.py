@@ -1122,14 +1122,14 @@ def viz_model_preds_inst(version,
                         # angle = np.deg2rad((direction_mask[si, 0, y, x] - 1)*10)
                         dx = R * np.cos(angle)
                         dy = R * np.sin(angle)
-                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(1, 0, 0, 0.6))
+                        plt.arrow(x=x+2, y=y+2, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(1, 0, 0, 0.6))
 
                         x, y = coord[i, 0], coord[i, 1]
                         angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
                         # angle = np.deg2rad((direction_mask[si, 1, y, x] - 1)*10)
                         dx = R * np.cos(angle)
                         dy = R * np.sin(angle)
-                        plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(0, 0, 1, 0.6))
+                        plt.arrow(x=x-2, y=y-2, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(0, 0, 1, 0.6))
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
