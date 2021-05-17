@@ -1153,6 +1153,87 @@ def viz_model_preds_inst(version,
                 counter += 1
 
 
+def get_pc_from_mask(mask):
+    pc = np.where(mask > 0)
+    pc = np.stack([pc[1], pc[0]], axis=-1)
+    pc[:, 0] -= 200
+    pc[:, 1] -= 100
+    z = np.zeros(pc.shape[0]).reshape(-1, 1)
+    pc = np.c_[pc, z]
+    return pc
+
+
+import numpy as np
+import os.path as osp
+
+from nuscenes.utils.data_classes import LidarPointCloud
+from nuscenes.utils.geometry_utils import transform_matrix
+from pyquaternion import Quaternion
+from nuscenes.utils.geometry_utils import view_points
+from nuscenes import NuScenes
+
+
+def render_sample_data(nusc,
+                       sample_data_token: str,
+                       nsweeps: int = 1,
+                       use_flat_vehicle_coordinates: bool = True,
+                       show_lidarseg: bool = False) -> None:
+    sd_record = nusc.get('sample_data', sample_data_token)
+
+    sample_rec = nusc.get('sample', sd_record['sample_token'])
+    chan = sd_record['channel']
+    ref_chan = 'LIDAR_TOP'
+    ref_sd_token = sample_rec['data'][ref_chan]
+    ref_sd_record = nusc.get('sample_data', ref_sd_token)
+
+    if show_lidarseg:
+        assert hasattr(nusc, 'lidarseg'), 'Error: nuScenes-lidarseg not installed!'
+
+        # Ensure that lidar pointcloud is from a keyframe.
+        assert sd_record['is_key_frame'], \
+            'Error: Only pointclouds which are keyframes have lidar segmentation labels. Rendering aborted.'
+
+        assert nsweeps == 1, \
+            'Error: Only pointclouds which are keyframes have lidar segmentation labels; nsweeps should ' \
+            'be set to 1.'
+
+        # Load a single lidar point cloud.
+        pcl_path = osp.join(nusc.dataroot, ref_sd_record['filename'])
+        pc = LidarPointCloud.from_file(pcl_path)
+    else:
+        # Get aggregated lidar point cloud in lidar frame.
+        pc, times = LidarPointCloud.from_file_multisweep(nusc, sample_rec, chan, ref_chan, nsweeps=nsweeps)
+    velocities = None
+
+    # By default we render the sample_data top down in the sensor frame.
+    # This is slightly inaccurate when rendering the map as the sensor frame may not be perfectly upright.
+    # Using use_flat_vehicle_coordinates we can render the map in the ego frame instead.
+    if use_flat_vehicle_coordinates:
+        # Retrieve transformation matrices for reference point cloud.
+        cs_record = nusc.get('calibrated_sensor', ref_sd_record['calibrated_sensor_token'])
+        pose_record = nusc.get('ego_pose', ref_sd_record['ego_pose_token'])
+        ref_to_ego = transform_matrix(translation=cs_record['translation'],
+                                      rotation=Quaternion(cs_record["rotation"]))
+
+        # Compute rotation between 3D vehicle pose and "flat" vehicle pose (parallel to global z plane).
+        ego_yaw = Quaternion(pose_record['rotation']).yaw_pitch_roll[0]
+        rotation_vehicle_flat_from_vehicle = np.dot(
+            Quaternion(scalar=np.cos(ego_yaw / 2), vector=[0, 0, np.sin(ego_yaw / 2)]).rotation_matrix,
+            Quaternion(pose_record['rotation']).inverse.rotation_matrix)
+        # rotation_vehicle_flat_from_vehicle = Quaternion(pose_record['rotation']).inverse.rotation_matrix
+        vehicle_flat_from_vehicle = np.eye(4)
+        vehicle_flat_from_vehicle[:3, :3] = rotation_vehicle_flat_from_vehicle
+        viewpoint = np.dot(vehicle_flat_from_vehicle, ref_to_ego)
+    else:
+        viewpoint = np.eye(4)
+
+    # Show point cloud.
+    pc.points[:2, :] /= 0.15
+    points = view_points(pc.points[:3, :], viewpoint, normalize=False)
+
+    return points
+
+
 def gen_pred_pc(version,
                 modelf,
                 dataroot='data/nuScenes',
@@ -1212,6 +1293,7 @@ def gen_pred_pc(version,
                                           parser_name=parser_name, distributed=False)
     loader = trainloader if viz_train else valloader
     nusc_maps = get_nusc_maps(map_folder)
+    nusc = NuScenes(version='v1.0-'+version, dataroot=dataroot, verbose=False)
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
@@ -1236,25 +1318,33 @@ def gen_pred_pc(version,
     model.load_state_dict(torch.load(modelf))
     model.to(device)
 
+    val = 0.01
+    fH, fW = final_dim
+    plt.figure(figsize=(3*fW*val, (2*fH)*val))
+    gs = mpl.gridspec.GridSpec(2, 3, height_ratios=(1, 1))
+    gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
+
     dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
-    dx, bx = dx[:2].numpy(), bx[:2].numpy()
 
     scene2map = {}
     for rec in loader.dataset.nusc.scene:
         log = loader.dataset.nusc.get('log', rec['log_token'])
         scene2map[rec['name']] = log['location']
 
-    max_pool_1 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
-    max_pool_2 = nn.MaxPool2d((3, 3), padding=(1, 1), stride=1)
+    max_pool_1 = nn.MaxPool2d((1, 5), padding=(0, 2), stride=1)
+    avg_pool_1 = nn.AvgPool2d((9, 5), padding=(4, 2), stride=1)
+    max_pool_2 = nn.MaxPool2d((5, 1), padding=(2, 0), stride=1)
+    avg_pool_2 = nn.AvgPool2d((5, 9), padding=(2, 4), stride=1)
     post_processor = LaneNetPostProcessor(dbscan_eps=1.5, postprocess_min_samples=50)
 
+    counter = 0
     model.eval()
     with torch.no_grad():
         for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(loader):
             # if batchi < 18:
             #     continue
 
-            out, embedded = model(
+            out, embedded, direction = model(
                     points.cuda(),
                     points_mask.cuda(),
                     imgs.to(device),
@@ -1266,19 +1356,24 @@ def gen_pred_pc(version,
                     translation.to(device),
                     yaw_pitch_roll.to(device),
                     )
-            origin_out = binimgs
+            origin_out = out
             out = out.softmax(1).cpu()
 
+            nms_mask_1 = ((max_pool_1(origin_out) - origin_out) < 0.01).cpu().numpy()
+            avg_mask_1 = (avg_pool_1(origin_out)).cpu().numpy()
+            nms_mask_2 = ((max_pool_2(origin_out) - origin_out) < 0.01).cpu().numpy()
+            avg_mask_2 = (avg_pool_2(origin_out)).cpu().numpy()
+            vertical_mask = avg_mask_1 > avg_mask_2
+            horizontal_mask = ~vertical_mask
+            # import ipdb; ipdb.set_trace()
+            nms_mask = (vertical_mask & nms_mask_1) | (horizontal_mask & nms_mask_2)
             preds = onehot_encoding(out).cpu().numpy()
+            preds[~nms_mask] = 0
             embedded = embedded.cpu()
 
             for si in range(imgs.shape[0]):
-                inst_mask = np.zeros((200, 400), dtype='int32')
-                inst_mask_pil = np.zeros((200, 400, 4), dtype='uint8')
-
                 simplified_coords = []
-
-                count = 0
+                mask = np.zeros((3, preds.shape[2], preds.shape[3]))
                 for i in range(1, preds.shape[1]):
                     single_mask = preds[si][i].astype('uint8')
                     single_embedded = embedded[si].permute(1, 2, 0)
@@ -1286,40 +1381,71 @@ def gen_pred_pc(version,
                     if single_class_inst_mask is None:
                         continue
 
-
                     num_inst = len(single_class_inst_coords)
+                    # GT
+                    # single_class_inst_mask = inst_label[si][i].int().numpy()
+                    # num_inst = np.max(single_class_inst_mask)
 
                     prob = origin_out[si][i]
                     prob[single_class_inst_mask == 0] = 0
-                    max_pooled_1 = max_pool_1(prob.unsqueeze(0))[0]
-                    max_pooled_2 = max_pool_2(prob.unsqueeze(0))[0]
-                    nms_mask_1 = ((max_pooled_1 - prob) < 1e-1).cpu().numpy()
-                    nms_mask_2 = ((max_pooled_2 - prob) < 1e-1).cpu().numpy()
-                    nms_mask = nms_mask_1 | nms_mask_2
+                    nms_mask_1 = ((max_pool_1(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
+                    avg_mask_1 = avg_pool_1(prob.unsqueeze(0))[0].cpu().numpy()
+                    nms_mask_2 = ((max_pool_2(prob.unsqueeze(0))[0] - prob) < 0.0001).cpu().numpy()
+                    avg_mask_2 = avg_pool_2(prob.unsqueeze(0))[0].cpu().numpy()
+                    vertical_mask = avg_mask_1 > avg_mask_2
+                    horizontal_mask = ~vertical_mask
+                    nms_mask = (vertical_mask & nms_mask_1) | (horizontal_mask & nms_mask_2)
 
-                    for j in range(1, num_inst+1):
-                        idx = np.where(nms_mask & (single_class_inst_mask == j))
+                    for j in range(1, num_inst + 1):
                         full_idx = np.where((single_class_inst_mask == j))
-                        if len(idx[0]) == 0:
-                            continue
-
-                        lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
                         full_lane_coord = np.vstack((full_idx[1], full_idx[0])).transpose()
 
-                        range_0 = np.max(lane_coordinate[:, 0]) - np.min(lane_coordinate[:, 0])
-                        range_1 = np.max(lane_coordinate[:, 1]) - np.min(lane_coordinate[:, 1])
+                        idx = np.where(nms_mask & (single_class_inst_mask == j))
+                        if len(idx[0]) == 0:
+                            continue
+                        lane_coordinate = np.vstack((idx[1], idx[0])).transpose()
+
+                        range_0 = np.max(full_lane_coord[:, 0]) - np.min(full_lane_coord[:, 0])
+                        range_1 = np.max(full_lane_coord[:, 1]) - np.min(full_lane_coord[:, 1])
                         if range_0 > range_1:
                             lane_coordinate = sorted(lane_coordinate, key=lambda x: x[0])
                             full_lane_coord = sorted(full_lane_coord, key=lambda x: x[0])
+                            if full_lane_coord[0][0] < nx[0] - full_lane_coord[-1][0]:
+                                full_lane_coord.insert(0, lane_coordinate[0])
+                            else:
+                                full_lane_coord.insert(0, lane_coordinate[-1])
                         else:
                             lane_coordinate = sorted(lane_coordinate, key=lambda x: x[1])
                             full_lane_coord = sorted(full_lane_coord, key=lambda x: x[1])
+                            if full_lane_coord[0][1] < nx[1] - full_lane_coord[-1][1]:
+                                full_lane_coord.insert(0, lane_coordinate[0])
+                            else:
+                                full_lane_coord.insert(0, lane_coordinate[-1])
 
-                        lane_coordinate.insert(0, full_lane_coord[0])
-                        lane_coordinate.insert(-1, full_lane_coord[-1])
                         lane_coordinate = np.stack(lane_coordinate)
                         lane_coordinate = sort_points_by_dist(lane_coordinate)
+                        lane_coordinate = lane_coordinate.astype('int32')
+                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si])
+                        cv2.polylines(mask[i-1], lane_coordinate, color=1, thickness=3)
                         simplified_coords.append(lane_coordinate)
 
-                    inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
-                    count += num_inst
+                # mask = preds[si]
+                pc_divider = get_pc_from_mask(mask[1])
+                pc_ped = get_pc_from_mask(mask[2])
+                pc_boundary = get_pc_from_mask(mask[3])
+
+                idx = f'eval{batchi:06}_{si:03}'
+                rec = loader.dataset.ixes[counter]
+                sample_data_token = rec['data']['LIDAR_TOP']
+                pc_lidar = render_sample_data(nusc, sample_data_token).T
+
+                with open(f'{idx}_divider.bin', 'wb') as f:
+                    np.save(f, pc_divider)
+                with open(f'{idx}_ped.bin', 'wb') as f:
+                    np.save(f, pc_ped)
+                with open(f'{idx}_boundary.bin', 'wb') as f:
+                    np.save(f, pc_boundary)
+                with open(f'{idx}_lidar.bin', 'wb') as f:
+                    np.save(f, pc_lidar)
+                print('saving', idx)
+                counter += 1
