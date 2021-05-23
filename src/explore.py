@@ -943,8 +943,8 @@ def viz_model_preds_inst(version,
     else:
         raise NotImplementedError
 
-    # model.load_state_dict(torch.load(modelf), strict=False)
-    model.load_state_dict(torch.load(modelf))
+    model.load_state_dict(torch.load(modelf), strict=False)
+    # model.load_state_dict(torch.load(modelf))
     model.to(device)
 
     dx, bx, nx = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
@@ -1235,6 +1235,86 @@ def render_sample_data(nusc,
 
     return points
 
+
+def get_pc_from_mask(mask):
+    pc = np.where(mask > 0)
+    pc = np.stack([pc[1], pc[0]], axis=-1)
+    pc[:, 0] -= 200
+    pc[:, 1] -= 100
+    z = np.zeros(pc.shape[0]).reshape(-1, 1)
+    pc = np.c_[pc, z]
+    return pc
+
+
+import numpy as np
+import os.path as osp
+
+from nuscenes.utils.data_classes import LidarPointCloud
+from nuscenes.utils.geometry_utils import transform_matrix
+from pyquaternion import Quaternion
+from nuscenes.utils.geometry_utils import view_points
+from nuscenes import NuScenes
+
+
+def render_sample_data(nusc,
+                       sample_data_token: str,
+                       nsweeps: int = 1,
+                       use_flat_vehicle_coordinates: bool = True,
+                       show_lidarseg: bool = False) -> None:
+    sd_record = nusc.get('sample_data', sample_data_token)
+
+    sample_rec = nusc.get('sample', sd_record['sample_token'])
+    chan = sd_record['channel']
+    ref_chan = 'LIDAR_TOP'
+    ref_sd_token = sample_rec['data'][ref_chan]
+    ref_sd_record = nusc.get('sample_data', ref_sd_token)
+
+    if show_lidarseg:
+        assert hasattr(nusc, 'lidarseg'), 'Error: nuScenes-lidarseg not installed!'
+
+        # Ensure that lidar pointcloud is from a keyframe.
+        assert sd_record['is_key_frame'], \
+            'Error: Only pointclouds which are keyframes have lidar segmentation labels. Rendering aborted.'
+
+        assert nsweeps == 1, \
+            'Error: Only pointclouds which are keyframes have lidar segmentation labels; nsweeps should ' \
+            'be set to 1.'
+
+        # Load a single lidar point cloud.
+        pcl_path = osp.join(nusc.dataroot, ref_sd_record['filename'])
+        pc = LidarPointCloud.from_file(pcl_path)
+    else:
+        # Get aggregated lidar point cloud in lidar frame.
+        pc, times = LidarPointCloud.from_file_multisweep(nusc, sample_rec, chan, ref_chan, nsweeps=nsweeps)
+    velocities = None
+
+    # By default we render the sample_data top down in the sensor frame.
+    # This is slightly inaccurate when rendering the map as the sensor frame may not be perfectly upright.
+    # Using use_flat_vehicle_coordinates we can render the map in the ego frame instead.
+    if use_flat_vehicle_coordinates:
+        # Retrieve transformation matrices for reference point cloud.
+        cs_record = nusc.get('calibrated_sensor', ref_sd_record['calibrated_sensor_token'])
+        pose_record = nusc.get('ego_pose', ref_sd_record['ego_pose_token'])
+        ref_to_ego = transform_matrix(translation=cs_record['translation'],
+                                      rotation=Quaternion(cs_record["rotation"]))
+
+        # Compute rotation between 3D vehicle pose and "flat" vehicle pose (parallel to global z plane).
+        ego_yaw = Quaternion(pose_record['rotation']).yaw_pitch_roll[0]
+        rotation_vehicle_flat_from_vehicle = np.dot(
+            Quaternion(scalar=np.cos(ego_yaw / 2), vector=[0, 0, np.sin(ego_yaw / 2)]).rotation_matrix,
+            Quaternion(pose_record['rotation']).inverse.rotation_matrix)
+        # rotation_vehicle_flat_from_vehicle = Quaternion(pose_record['rotation']).inverse.rotation_matrix
+        vehicle_flat_from_vehicle = np.eye(4)
+        vehicle_flat_from_vehicle[:3, :3] = rotation_vehicle_flat_from_vehicle
+        viewpoint = np.dot(vehicle_flat_from_vehicle, ref_to_ego)
+    else:
+        viewpoint = np.eye(4)
+
+    # Show point cloud.
+    pc.points[:2, :] /= 0.15
+    points = view_points(pc.points[:3, :], viewpoint, normalize=False)
+
+    return points
 
 def gen_pred_pc(version,
                 modelf,

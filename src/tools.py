@@ -512,6 +512,10 @@ def get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn,
     with torch.no_grad():
         for batch in loader:
             points, points_mask, allimgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask, direction_mask = batch
+            binimgs = binimgs[..., -400:]
+            inst_mask = inst_mask[..., -400:]
+            direction_mask = direction_mask[..., -400:]
+
             binimgs = binimgs.cuda()
             inst_mask = inst_mask.cuda()
             direction_mask = direction_mask.cuda()

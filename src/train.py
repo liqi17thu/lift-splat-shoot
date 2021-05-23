@@ -69,7 +69,7 @@ def train(version='mini',
           pos_weight=2.13,
           logdir='./runs',
 
-          xbound=[-30.0, 30.0, 0.15],
+          xbound=[-40.0, 40.0, 0.15],
           ybound=[-15.0, 15.0, 0.15],
           zbound=[-10.0, 10.0, 20.0],
           dbound=[4.0, 45.0, 1.0],
@@ -181,6 +181,10 @@ def train(version='mini',
 
         np.random.seed()
         for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_mask, direction_mask) in enumerate(trainloader):
+            binimgs = binimgs[..., -400:]
+            inst_mask = inst_mask[..., -400:]
+            direction_mask = direction_mask[..., -400:]
+
             t0 = time()
             opt.zero_grad()
             preds, embedded, direction = model(points.cuda(),
