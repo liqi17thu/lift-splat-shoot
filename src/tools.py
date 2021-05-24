@@ -823,46 +823,9 @@ def sort_points_by_dist(coords):
     return np.stack(sorted_points, 0)
 
 
-def greedy_connect(coords, direction_mask, direction_matrix, dist_matrix, sorted_indices, sorted_points, taken_direction, num_points, threshold):
+def connect_by_step(coords, direction_mask, sorted_points, taken_direction, step=5, per_deg=10, ema=0.5):
+    # dn = None
     while True:
-        last_idx = sorted_indices[-1]
-        last_point = tuple(np.flip(sorted_points[-1]))
-        if not taken_direction[last_point][0]:
-            direction = direction_mask[last_point][0]
-            taken_direction[last_point][0] = True
-        elif not taken_direction[last_point][1]:
-            direction = direction_mask[last_point][1]
-            taken_direction[last_point][1] = True
-        else:
-            break
-
-        if direction == 0:
-            continue
-        deg = direction - 1
-        unit_vector = [np.cos(np.deg2rad(deg)), np.sin(np.deg2rad(deg))]
-        direct_cos = np.dot(direction_matrix[last_idx], unit_vector)
-        direct_cos[direct_cos < 0] = 0
-        direct_multiplier = 1 / (direct_cos + 1e-5)
-        dist = dist_matrix[last_idx]
-        dist_metric = direct_multiplier * dist
-        idx = np.argmin(dist_metric) % num_points
-        if dist_metric[idx] > threshold:
-            continue
-        inverse_deg = (180 + deg) % 360
-        target_direction = (direction_mask[tuple(np.flip(coords[idx]))] - 1)
-        tmp = np.abs(target_direction - inverse_deg)
-        tmp = torch.min(tmp, 360 - tmp)
-        taken = np.argmin(tmp)
-        taken_direction[tuple(np.flip(coords[idx]))][taken] = True
-
-        sorted_points.append(coords[idx])
-        sorted_indices.append(idx)
-        dist_matrix[:, idx] = np.inf
-        direction_matrix[:, idx] = (0, 0)
-
-def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step=5, per_deg=10):
-    while True:
-        last_idx = sorted_indices[-1]
         last_point = tuple(np.flip(sorted_points[-1]))
         if not taken_direction[last_point][0]:
             direction = direction_mask[last_point][0]
@@ -877,10 +840,23 @@ def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken
             continue
 
         deg = per_deg * (direction - 1)
-        unit_vector = step * np.array([np.cos(np.deg2rad(deg)), np.sin(np.deg2rad(deg))])
+        # if dn is not None:
+        #     if max(deg, dn) - min(deg, dn) < 180:
+        #         deg = deg * ema + dn * (1 - ema)
+        #         dn = deg
+        #     else:
+        #         deg = ((deg * ema + dn * (1 - ema) - 360)/2 + 360) % 360
+        #         dn = deg
 
+        unit_vector = step * np.array([np.cos(np.deg2rad(deg)), np.sin(np.deg2rad(deg))])
         last_point = deepcopy(sorted_points[-1])
-        coords[last_idx] = 9999999
+
+        # NMS
+        coords = coords[np.linalg.norm(coords - last_point, axis=-1) > step]
+
+        if len(coords) == 0:
+            break
+
         target_point = np.array([last_point[0] + unit_vector[0], last_point[1] + unit_vector[1]])
         dist_metric = np.linalg.norm(coords - target_point, axis=-1)
         idx = np.argmin(dist_metric)
@@ -888,10 +864,6 @@ def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken
             break
 
         sorted_points.append(deepcopy(coords[idx]))
-        sorted_indices.append(idx)
-
-        # NMS
-        coords[np.linalg.norm(coords - last_point, axis=-1) < step+2] = 9999999
 
         inverse_deg = (180 + deg) % 360
         target_direction = per_deg * (direction_mask[tuple(np.flip(sorted_points[-1]))] - 1)
@@ -902,22 +874,14 @@ def connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken
 
 
 def connect_by_direction(coords, direction_mask, step=5, per_deg=10):
-    # num_points = coords.shape[0]
-    # float_coords = coords.astype('float')
-    # diff_matrix = np.repeat(float_coords[:, None], num_points, 1) - float_coords
-    # dist_matrix = np.sqrt((diff_matrix ** 2).sum(-1))
-    # direction_matrix = diff_matrix / (dist_matrix.reshape(num_points, num_points, 1) + 1e-6)
-
-    # dist_matrix[:, 0] = np.inf
-    # direction_matrix[:, 0] = (0, 0)
+    tmp = direction_mask[coords[:, 1], coords[:, 0]]
+    coords = coords[abs(tmp[:, 0] - tmp[:, 1]) > 100 / per_deg, :]
     sorted_points = [deepcopy(coords[0])]
-    sorted_indices = [0]
     taken_direction = np.zeros_like(direction_mask, dtype=np.bool)
 
-    connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step, per_deg)
+    connect_by_step(coords, direction_mask, sorted_points, taken_direction, step, per_deg)
     sorted_points.reverse()
-    sorted_indices.reverse()
-    connect_by_step(coords, direction_mask, sorted_indices, sorted_points, taken_direction, step, per_deg)
+    connect_by_step(coords, direction_mask, sorted_points, taken_direction, step, per_deg)
 
     return np.stack(sorted_points, 0)
 
