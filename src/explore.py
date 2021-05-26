@@ -30,6 +30,7 @@ from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
                     SimpleLoss, get_val_info, add_ego, gen_dx_bx,
                     get_nusc_maps, plot_nusc_map, DiscriminativeLoss)
 from .tools import label_onehot_decoding, onehot_encoding
+from .tools import get_pred_top2_direction
 from .models import compile_model
 from .hd_models import HDMapNet, TemporalHDMapNet
 from .vpn_model import VPNet
@@ -1001,9 +1002,9 @@ def viz_model_preds_inst(version,
             # origin_out = binimgs
             out = out.softmax(1).cpu()
             direction = direction.permute(0, 2, 3, 1).cpu()
-            direction = get_pred_top2_direction(direction, dim=1)
+            direction = get_pred_top2_direction(direction, dim=-1)
 
-            _, direction_mask = torch.topk(direction_mask, 2, dim=1)
+            _, direction_mask = torch.topk(direction_mask, 2, dim=-1)
             direction_mask = direction_mask.cpu() - 1
 
             preds = onehot_encoding(out).cpu().numpy()
@@ -1092,6 +1093,7 @@ def viz_model_preds_inst(version,
                         # lane_coordinate = np.asarray(list(line.coords)).reshape((-1, 2))
                         lane_coordinate = lane_coordinate.astype('int32')
                         lane_coordinate = connect_by_direction(lane_coordinate, direction[si], step=5, per_deg=360/angle_class)
+                        # import ipdb; ipdb.set_trace()
                         simplified_coords.append(lane_coordinate)
 
                     # inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
@@ -1117,14 +1119,14 @@ def viz_model_preds_inst(version,
                 for coord in simplified_coords:
                     for i in range(len(coord)):
                         x, y = coord[i, 0], coord[i, 1]
-                        angle = np.deg2rad((direction[si, y, x, 0] - 1)*10)
+                        angle = np.deg2rad((direction[si, y, x, 0])*10)
                         # angle = np.deg2rad((direction_mask[si, 0, y, x] - 1)*10)
                         dx = R * np.cos(angle)
                         dy = R * np.sin(angle)
                         plt.arrow(x=x+2, y=y+2, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(1, 0, 0, 0.6))
 
                         x, y = coord[i, 0], coord[i, 1]
-                        angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
+                        angle = np.deg2rad((direction[si, y, x, 1])*10)
                         # angle = np.deg2rad((direction_mask[si, 1, y, x] - 1)*10)
                         dx = R * np.cos(angle)
                         dy = R * np.sin(angle)
@@ -1234,8 +1236,6 @@ def render_sample_data(nusc,
 
     return points
 
-
-from .tools import get_pred_top2_direction
 
 def gen_pred_pc(version,
                 modelf,
