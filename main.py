@@ -22,4 +22,5 @@ if __name__ == '__main__':
         'viz_model_preds': explore.viz_model_preds,
         'viz_model_preds_class3': explore.viz_model_preds_class3,
         'viz_model_preds_inst': explore.viz_model_preds_inst,
+        'gen_pred_pc': explore.gen_pred_pc,
     })

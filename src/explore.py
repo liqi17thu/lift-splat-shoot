@@ -874,6 +874,7 @@ def viz_model_preds_inst(version,
                             H=900, W=1600,
                             resize_lim=(0.193, 0.225),
                             final_dim=(128, 352),
+                            angle_class=36,
                             # final_dim=(300, 400),
                             bot_pct_lim=(0.0, 0.22),
                             rot_lim=(-5.4, 5.4),
@@ -905,6 +906,7 @@ def viz_model_preds_inst(version,
                     'line_width': line_width,
                     'preprocess': preprocess,
                     'bot_pct_lim': bot_pct_lim,
+                    'angle_class': angle_class,
                     'cams': cams,
                     'Ncams': 6,
                 }
@@ -998,12 +1000,11 @@ def viz_model_preds_inst(version,
             origin_out = out
             # origin_out = binimgs
             out = out.softmax(1).cpu()
-            _, direction = torch.topk(direction, 2, dim=1)
-            # _, direction = torch.topk(direction_mask, 2, dim=1)
             direction = direction.permute(0, 2, 3, 1).cpu()
+            direction = get_pred_top2_direction(direction, dim=1)
 
             _, direction_mask = torch.topk(direction_mask, 2, dim=1)
-            direction_mask = direction_mask.cpu()
+            direction_mask = direction_mask.cpu() - 1
 
             preds = onehot_encoding(out).cpu().numpy()
             embedded = embedded.cpu()
@@ -1090,7 +1091,8 @@ def viz_model_preds_inst(version,
                         # line = line.simplify(tolerance=1.5)
                         # lane_coordinate = np.asarray(list(line.coords)).reshape((-1, 2))
                         lane_coordinate = lane_coordinate.astype('int32')
-                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si])
+                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si], step=5, per_deg=360/angle_class)
+                        # import ipdb; ipdb.set_trace()
                         simplified_coords.append(lane_coordinate)
 
                     # inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
@@ -1106,28 +1108,28 @@ def viz_model_preds_inst(version,
 
                 R = 2
                 arr_width = 0.5
-                plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
-                plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
-                plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
+                # plt.imshow(seg_mask[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
+                # plt.imshow(seg_mask[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
+                # plt.imshow(seg_mask[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
                 # plt.imshow(binimgs[si][1], vmin=0, cmap='Blues', vmax=1, alpha=0.6)
                 # plt.imshow(binimgs[si][2], vmin=0, cmap='Reds', vmax=1, alpha=0.6)
                 # plt.imshow(binimgs[si][3], vmin=0, cmap='Greens', vmax=1, alpha=0.6)
 
-                # for coord in simplified_coords:
-                #     for i in range(len(coord)):
-                #         x, y = coord[i, 0], coord[i, 1]
-                #         angle = np.deg2rad((direction[si, y, x, 0] - 1)*10)
-                #         # angle = np.deg2rad((direction_mask[si, 0, y, x] - 1)*10)
-                #         dx = R * np.cos(angle)
-                #         dy = R * np.sin(angle)
-                #         plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(1, 0, 0, 0.6))
+                for coord in simplified_coords:
+                    for i in range(len(coord)):
+                        x, y = coord[i, 0], coord[i, 1]
+                        angle = np.deg2rad((direction[si, y, x, 0] - 1)*10)
+                        # angle = np.deg2rad((direction_mask[si, 0, y, x] - 1)*10)
+                        dx = R * np.cos(angle)
+                        dy = R * np.sin(angle)
+                        plt.arrow(x=x+2, y=y+2, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(1, 0, 0, 0.6))
 
-                #         x, y = coord[i, 0], coord[i, 1]
-                #         angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
-                #         # angle = np.deg2rad((direction_mask[si, 1, y, x] - 1)*10)
-                #         dx = R * np.cos(angle)
-                #         dy = R * np.sin(angle)
-                #         plt.arrow(x=x, y=y, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(0, 0, 1, 0.6))
+                        x, y = coord[i, 0], coord[i, 1]
+                        angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
+                        # angle = np.deg2rad((direction_mask[si, 1, y, x] - 1)*10)
+                        dx = R * np.cos(angle)
+                        dy = R * np.sin(angle)
+                        plt.arrow(x=x-2, y=y-2, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(0, 0, 1, 0.6))
 
                 # plot static map (improves visualization)
                 rec = loader.dataset.ixes[counter]
@@ -1234,6 +1236,8 @@ def render_sample_data(nusc,
     return points
 
 
+from .tools import get_pred_top2_direction
+
 def gen_pred_pc(version,
                 modelf,
                 dataroot='data/nuScenes',
@@ -1251,6 +1255,7 @@ def gen_pred_pc(version,
                 bot_pct_lim=(0.0, 0.22),
                 rot_lim=(-5.4, 5.4),
                 line_width=2,
+                angle_class=36,
                 rand_flip=True,
 
                 xbound=[-30.0, 30.0, 0.15],
@@ -1279,6 +1284,7 @@ def gen_pred_pc(version,
                     'preprocess': preprocess,
                     'bot_pct_lim': bot_pct_lim,
                     'cams': cams,
+                    'angle_class': angle_class,
                     'Ncams': 6,
                 }
 
@@ -1340,7 +1346,7 @@ def gen_pred_pc(version,
     counter = 0
     model.eval()
     with torch.no_grad():
-        for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label) in enumerate(loader):
+        for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label, direction_mask) in enumerate(loader):
             # if batchi < 18:
             #     continue
 
@@ -1359,22 +1365,17 @@ def gen_pred_pc(version,
             origin_out = out
             out = out.softmax(1).cpu()
 
-            nms_mask_1 = ((max_pool_1(origin_out) - origin_out) < 0.01).cpu().numpy()
-            avg_mask_1 = (avg_pool_1(origin_out)).cpu().numpy()
-            nms_mask_2 = ((max_pool_2(origin_out) - origin_out) < 0.01).cpu().numpy()
-            avg_mask_2 = (avg_pool_2(origin_out)).cpu().numpy()
-            vertical_mask = avg_mask_1 > avg_mask_2
-            horizontal_mask = ~vertical_mask
-            # import ipdb; ipdb.set_trace()
-            nms_mask = (vertical_mask & nms_mask_1) | (horizontal_mask & nms_mask_2)
+            direction = direction.permute(0, 2, 3, 1).cpu()
+            direction = get_pred_top2_direction(direction, dim=-1)
+
             preds = onehot_encoding(out).cpu().numpy()
-            preds[~nms_mask] = 0
             embedded = embedded.cpu()
 
             for si in range(imgs.shape[0]):
                 simplified_coords = []
-                mask = np.zeros((3, preds.shape[2], preds.shape[3]))
+                mask = np.zeros((4, preds.shape[2], preds.shape[3]))
                 for i in range(1, preds.shape[1]):
+
                     single_mask = preds[si][i].astype('uint8')
                     single_embedded = embedded[si].permute(1, 2, 0)
                     single_class_inst_mask, single_class_inst_coords = post_processor.postprocess(single_mask, single_embedded)
@@ -1425,14 +1426,16 @@ def gen_pred_pc(version,
                         lane_coordinate = np.stack(lane_coordinate)
                         lane_coordinate = sort_points_by_dist(lane_coordinate)
                         lane_coordinate = lane_coordinate.astype('int32')
-                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si])
-                        cv2.polylines(mask[i-1], lane_coordinate, color=1, thickness=3)
+                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si], step=8, per_deg=360/angle_class)
+                        cv2.polylines(mask[i], [lane_coordinate], False, color=1, thickness=1)
                         simplified_coords.append(lane_coordinate)
 
                 # mask = preds[si]
                 pc_divider = get_pc_from_mask(mask[1])
                 pc_ped = get_pc_from_mask(mask[2])
                 pc_boundary = get_pc_from_mask(mask[3])
+
+
 
                 idx = f'eval{batchi:06}_{si:03}'
                 rec = loader.dataset.ixes[counter]
