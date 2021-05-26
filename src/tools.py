@@ -747,7 +747,7 @@ def get_discrete_degree(vec, angle_class=36):
 def calc_angle_diff(pred_mask, gt_mask, angle_class):
     per_angle = float(360. / angle_class)
     eval_mask = 1 - gt_mask[:, 0]
-    pred_direction = get_pred_top2_direction(pred_mask, dim=-1)
+    pred_direction = get_pred_top2_direction(pred_mask, dim=1)
 
     gt_direction = (torch.topk(gt_mask, 2, dim=1)[1] - 1).float()
     pred_direction *= per_angle
@@ -861,7 +861,7 @@ def connect_by_step(coords, direction_mask, sorted_points, taken_direction, step
         else:
             break
 
-        if direction == 0:
+        if direction == -1:
             continue
 
         # if (sorted_points[-1] == np.array([45, 43])).all():

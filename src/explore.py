@@ -1004,9 +1004,9 @@ def viz_model_preds_inst(version,
             # origin_out = binimgs
             out = out.softmax(1).cpu()
             direction = direction.permute(0, 2, 3, 1).cpu()
-            direction = get_pred_top2_direction(direction, dim=1)
+            direction = get_pred_top2_direction(direction, dim=-1)
 
-            _, direction_mask = torch.topk(direction_mask, 2, dim=1)
+            _, direction_mask = torch.topk(direction_mask, 2, dim=-1)
             direction_mask = direction_mask.cpu() - 1
 
             preds = onehot_encoding(out).cpu().numpy()
@@ -1121,14 +1121,14 @@ def viz_model_preds_inst(version,
                 for coord in simplified_coords:
                     for i in range(len(coord)):
                         x, y = coord[i, 0], coord[i, 1]
-                        angle = np.deg2rad((direction[si, y, x, 0] - 1)*10)
+                        angle = np.deg2rad((direction[si, y, x, 0])*10)
                         # angle = np.deg2rad((direction_mask[si, 0, y, x] - 1)*10)
                         dx = R * np.cos(angle)
                         dy = R * np.sin(angle)
                         plt.arrow(x=x+2, y=y+2, dx=dx, dy=dy, width=arr_width, head_width=5*arr_width, head_length=9*arr_width, overhang=0., facecolor=(1, 0, 0, 0.6))
 
                         x, y = coord[i, 0], coord[i, 1]
-                        angle = np.deg2rad((direction[si, y, x, 1] - 1)*10)
+                        angle = np.deg2rad((direction[si, y, x, 1])*10)
                         # angle = np.deg2rad((direction_mask[si, 1, y, x] - 1)*10)
                         dx = R * np.cos(angle)
                         dy = R * np.sin(angle)
