@@ -6,6 +6,7 @@ Authors: Jonah Philion and Sanja Fidler
 
 import os
 import cv2
+import math
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -424,6 +425,17 @@ def onehot_encoding(logits, dim=1):
     return one_hot
 
 
+def onehot_encoding_spread(logits, dim=1):
+    max_idx = torch.argmax(logits, dim, keepdim=True)
+    one_hot = logits.new_full(logits.shape, 0)
+    one_hot.scatter_(dim, max_idx, 1)
+    one_hot.scatter_(dim, torch.clamp(max_idx-1, min=0), 1)
+    one_hot.scatter_(dim, torch.clamp(max_idx-2, min=0), 1)
+    one_hot.scatter_(dim, torch.clamp(max_idx+1, max=logits.shape[dim]-1), 1)
+    one_hot.scatter_(dim, torch.clamp(max_idx+2, max=logits.shape[dim]-1), 1)
+
+    return one_hot
+
 def get_batch_iou_multi_class(preds, binimgs):
     intersects = []
     unions = []
@@ -824,7 +836,7 @@ def sort_points_by_dist(coords):
 
 
 def connect_by_step(coords, direction_mask, sorted_points, taken_direction, step=5, per_deg=10, ema=0.5):
-    # dn = None
+    dn = None
     while True:
         last_point = tuple(np.flip(sorted_points[-1]))
         if not taken_direction[last_point][0]:
@@ -839,6 +851,9 @@ def connect_by_step(coords, direction_mask, sorted_points, taken_direction, step
         if direction == 0:
             continue
 
+        # if (sorted_points[-1] == np.array([45, 43])).all():
+        #     import ipdb; ipdb.set_trace()
+
         deg = per_deg * (direction - 1)
         # if dn is not None:
         #     if max(deg, dn) - min(deg, dn) < 180:
@@ -848,23 +863,29 @@ def connect_by_step(coords, direction_mask, sorted_points, taken_direction, step
         #         deg = ((deg * ema + dn * (1 - ema) - 360)/2 + 360) % 360
         #         dn = deg
 
-        unit_vector = step * np.array([np.cos(np.deg2rad(deg)), np.sin(np.deg2rad(deg))])
+        vector_to_target = step * np.array([np.cos(np.deg2rad(deg)), np.sin(np.deg2rad(deg))])
         last_point = deepcopy(sorted_points[-1])
 
         # NMS
-        coords = coords[np.linalg.norm(coords - last_point, axis=-1) > step]
+        coords = coords[np.linalg.norm(coords - last_point, axis=-1) > step-1]
 
         if len(coords) == 0:
             break
 
-        target_point = np.array([last_point[0] + unit_vector[0], last_point[1] + unit_vector[1]])
+        # cosine_diff = vector_to_next.dot(vector_to_target) / (np.linalg.norm(vector_to_next, axis=-1) * np.linalg.norm(vector_to_target))
+        # cosine_diff[cosine_diff < 1e-5] = 1e-5
+        target_point = np.array([last_point[0] + vector_to_target[0], last_point[1] + vector_to_target[1]])
+        # dist_metric = np.linalg.norm(coords - target_point, axis=-1) / cosine_diff
         dist_metric = np.linalg.norm(coords - target_point, axis=-1)
         idx = np.argmin(dist_metric)
-        if dist_metric[idx] > 60:
-            break
+
+        if dist_metric[idx] > 50:
+           continue
 
         sorted_points.append(deepcopy(coords[idx]))
 
+        vector_to_next = coords[idx] - last_point
+        deg = np.rad2deg(math.atan2(vector_to_next[1], vector_to_next[0]))
         inverse_deg = (180 + deg) % 360
         target_direction = per_deg * (direction_mask[tuple(np.flip(sorted_points[-1]))] - 1)
         tmp = np.abs(target_direction - inverse_deg)
@@ -874,14 +895,17 @@ def connect_by_step(coords, direction_mask, sorted_points, taken_direction, step
 
 
 def connect_by_direction(coords, direction_mask, step=5, per_deg=10):
-    tmp = direction_mask[coords[:, 1], coords[:, 0]]
-    coords = coords[abs(tmp[:, 0] - tmp[:, 1]) > 100 / per_deg, :]
-    sorted_points = [deepcopy(coords[0])]
+    # tmp = direction_mask[coords[:, 1], coords[:, 0]]
+    # coords = coords[abs(tmp[:, 0] - tmp[:, 1]) > 30 / per_deg, :]
+    sorted_points = [deepcopy(coords[random.randint(0, coords.shape[0]-1)])]
     taken_direction = np.zeros_like(direction_mask, dtype=np.bool)
 
     connect_by_step(coords, direction_mask, sorted_points, taken_direction, step, per_deg)
     sorted_points.reverse()
     connect_by_step(coords, direction_mask, sorted_points, taken_direction, step, per_deg)
+
+    # if np.linalg.norm(sorted_points[0] - sorted_points[-1]) < step+3:
+    #     sorted_points.append(deepcopy(sorted_points[0]))
 
     return np.stack(sorted_points, 0)
 

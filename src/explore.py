@@ -856,10 +856,8 @@ def viz_model_preds_class3(version,
                 plt.savefig(imname)
                 counter += 1
 
-
-
-
 from .tools import connect_by_direction
+from .tools import onehot_encoding_spread
 
 def viz_model_preds_inst(version,
                             modelf,
@@ -976,15 +974,16 @@ def viz_model_preds_inst(version,
     car_img = Image.open('car_3.png')
     model.eval()
     # counter = 1204
+    # counter = 292
+    # counter = 188
     # counter = 80
-    counter = 192
     # counter = 72
     # counter = 44
     counter = 0
     with torch.no_grad():
         for batchi, (points, points_mask, imgs, rots, trans, intrins, post_rots, post_trans, translation, yaw_pitch_roll, binimgs, inst_label, direction_mask) in enumerate(loader):
-            if batchi < 48:
-                continue
+            # if batchi < 47:
+            #     continue
 
             out, embedded, direction = model(
                     points.cuda(),
@@ -1001,9 +1000,15 @@ def viz_model_preds_inst(version,
             origin_out = out
             # origin_out = binimgs
             out = out.softmax(1).cpu()
-            _, direction = torch.topk(direction, 2, dim=1)
-            # _, direction = torch.topk(direction_mask, 2, dim=1)
             direction = direction.permute(0, 2, 3, 1).cpu()
+            direction = torch.softmax(direction, -1)
+            idx1 = torch.argmax(direction, -1)
+            idx1_onehot_spread = onehot_encoding_spread(direction, -1)
+            idx1_onehot_spread = idx1_onehot_spread.bool()
+            direction[idx1_onehot_spread] = 0
+            idx2 = torch.argmax(direction, -1)
+            direction = torch.stack([idx1, idx2], -1)
+            # _, direction = torch.topk(direction, 2, dim=-1)
 
             _, direction_mask = torch.topk(direction_mask, 2, dim=1)
             direction_mask = direction_mask.cpu()
@@ -1026,6 +1031,8 @@ def viz_model_preds_inst(version,
             seg_mask[seg_mask < 0.1] = np.nan
 
             for si in range(imgs.shape[0]):
+                # if si == 0:
+                #     continue
                 plt.clf()
 
                 # inst_mask = np.zeros((200, 400), dtype='int32')
@@ -1059,7 +1066,7 @@ def viz_model_preds_inst(version,
                     nms_mask = (vertical_mask & nms_mask_1) | (horizontal_mask & nms_mask_2)
 
                     for j in range(1, num_inst+1):
-                        # if j != 1:
+                        # if j != 2:
                         #     continue
                         full_idx = np.where((single_class_inst_mask == j))
                         full_lane_coord = np.vstack((full_idx[1], full_idx[0])).transpose()
@@ -1098,6 +1105,7 @@ def viz_model_preds_inst(version,
                         # lane_coordinate = np.asarray(list(line.coords)).reshape((-1, 2))
                         lane_coordinate = lane_coordinate.astype('int32')
                         lane_coordinate = connect_by_direction(lane_coordinate, direction[si], step=5, per_deg=360/angle_class)
+                        # import ipdb; ipdb.set_trace()
                         simplified_coords.append(lane_coordinate)
 
                     # inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
@@ -1368,8 +1376,14 @@ def gen_pred_pc(version,
             origin_out = out
             out = out.softmax(1).cpu()
 
-            _, direction = torch.topk(direction, 2, dim=1)
             direction = direction.permute(0, 2, 3, 1).cpu()
+            direction = torch.softmax(direction, -1)
+            idx1 = torch.argmax(direction, -1)
+            idx1_onehot_spread = onehot_encoding_spread(direction, -1)
+            idx1_onehot_spread = idx1_onehot_spread.bool()
+            direction[idx1_onehot_spread] = 0
+            idx2 = torch.argmax(direction, -1)
+            direction = torch.stack([idx1, idx2], -1)
 
             preds = onehot_encoding(out).cpu().numpy()
             embedded = embedded.cpu()
@@ -1429,7 +1443,7 @@ def gen_pred_pc(version,
                         lane_coordinate = np.stack(lane_coordinate)
                         lane_coordinate = sort_points_by_dist(lane_coordinate)
                         lane_coordinate = lane_coordinate.astype('int32')
-                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si], step=5, per_deg=360/angle_class)
+                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si], step=8, per_deg=360/angle_class)
                         cv2.polylines(mask[i], [lane_coordinate], False, color=1, thickness=1)
                         simplified_coords.append(lane_coordinate)
 
