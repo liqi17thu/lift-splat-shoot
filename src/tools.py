@@ -727,7 +727,7 @@ def calc_angle_diff(pred_mask, gt_mask, angle_class):
     gt_direction = gt_direction[:, None, :, :, :].repeat(1, 2, 1, 1, 1)
     diff_mask = torch.abs(pred_direction - gt_direction)
     diff_mask = torch.min(diff_mask, 360 - diff_mask)
-    diff_mask = torch.min(diff_mask[:, 0, 0] + diff_mask[:, 1, 1], diff_mask[:, 1, 0] + diff_mask[:, 0, 1])
+    diff_mask = torch.min(diff_mask[:, 0, 0] + diff_mask[:, 1, 1], diff_mask[:, 1, 0] + diff_mask[:, 0, 1]) / 2
     return ((eval_mask * diff_mask).sum() / (eval_mask.sum() + 1e-6)).item()
 
 

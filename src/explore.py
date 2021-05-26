@@ -496,7 +496,12 @@ def eval_model(version,
                bot_pct_lim=(0.0, 0.22),
                rot_lim=(-5.4, 5.4),
                rand_flip=True,
-               line_width=1,
+               line_width=5,
+               angle_class=36,
+
+               scale_seg=1.0,
+               scale_var=1.0,
+               scale_dist=1.0,
 
                xbound=[-30.0, 30.0, 0.15],
                ybound=[-15.0, 15.0, 0.15],
@@ -520,6 +525,7 @@ def eval_model(version,
         'preprocess': preprocess,
         'H': H, 'W': W,
         'rand_flip': rand_flip,
+        'angle_class': angle_class,
         'line_width': line_width,
         'bot_pct_lim': bot_pct_lim,
         'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
@@ -541,7 +547,7 @@ def eval_model(version,
     elif method == 'temporal_HDMapNet':
         model = TemporalHDMapNet(xbound, ybound, outC=outC)
     elif method == 'VPN':
-        model = VPNet(outC=outC)
+        model = VPNet(outC=outC, direction_dim=angle_class+1)
     elif method == 'PP':
         model = PointPillar(outC, xbound, ybound, zbound)
     elif method == 'VPNPP':
@@ -560,9 +566,10 @@ def eval_model(version,
     delta_d = 3.0
     loss_fn = SimpleLoss(1.0).cuda()
     embedded_loss_fn = DiscriminativeLoss(embedded_dim, delta_v, delta_d).cuda()
+    direction_loss_fn = torch.nn.BCELoss(reduction='none')
 
     model.eval()
-    val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, eval_mAP=eval_mAP)
+    val_info = get_val_info(model, valloader, loss_fn, embedded_loss_fn, direction_loss_fn, scale_seg, scale_var, scale_dist, angle_class)
     val_info['chamfer_distance'] *= 0.15
     val_info['CD_pred (precision)'] *= 0.15
     val_info['CD_label (recall)'] *= 0.15
