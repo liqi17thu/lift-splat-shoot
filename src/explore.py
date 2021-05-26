@@ -1092,7 +1092,6 @@ def viz_model_preds_inst(version,
                         # lane_coordinate = np.asarray(list(line.coords)).reshape((-1, 2))
                         lane_coordinate = lane_coordinate.astype('int32')
                         lane_coordinate = connect_by_direction(lane_coordinate, direction[si], step=5, per_deg=360/angle_class)
-                        # import ipdb; ipdb.set_trace()
                         simplified_coords.append(lane_coordinate)
 
                     # inst_mask[single_class_inst_mask != 0] += single_class_inst_mask[single_class_inst_mask != 0] + count
@@ -1426,7 +1425,7 @@ def gen_pred_pc(version,
                         lane_coordinate = np.stack(lane_coordinate)
                         lane_coordinate = sort_points_by_dist(lane_coordinate)
                         lane_coordinate = lane_coordinate.astype('int32')
-                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si], step=8, per_deg=360/angle_class)
+                        lane_coordinate = connect_by_direction(lane_coordinate, direction[si], step=5, per_deg=360/angle_class)
                         cv2.polylines(mask[i], [lane_coordinate], False, color=1, thickness=1)
                         simplified_coords.append(lane_coordinate)
 
