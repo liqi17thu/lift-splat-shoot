@@ -436,6 +436,18 @@ def onehot_encoding_spread(logits, dim=1):
 
     return one_hot
 
+
+def get_pred_top2_direction(direction, dim=1):
+    direction = torch.softmax(direction, dim)
+    idx1 = torch.argmax(direction, dim)
+    idx1_onehot_spread = onehot_encoding_spread(direction, dim)
+    idx1_onehot_spread = idx1_onehot_spread.bool()
+    direction[idx1_onehot_spread] = 0
+    idx2 = torch.argmax(direction, dim)
+    direction = torch.stack([idx1, idx2], dim) - 1
+    return direction
+
+
 def get_batch_iou_multi_class(preds, binimgs):
     intersects = []
     unions = []
@@ -735,7 +747,8 @@ def get_discrete_degree(vec, angle_class=36):
 def calc_angle_diff(pred_mask, gt_mask, angle_class):
     per_angle = float(360. / angle_class)
     eval_mask = 1 - gt_mask[:, 0]
-    pred_direction = (torch.topk(pred_mask, 2, dim=1)[1] - 1).float()
+    pred_direction = get_pred_top2_direction(pred_mask, dim=-1)
+
     gt_direction = (torch.topk(gt_mask, 2, dim=1)[1] - 1).float()
     pred_direction *= per_angle
     gt_direction *= per_angle
@@ -854,7 +867,7 @@ def connect_by_step(coords, direction_mask, sorted_points, taken_direction, step
         # if (sorted_points[-1] == np.array([45, 43])).all():
         #     import ipdb; ipdb.set_trace()
 
-        deg = per_deg * (direction - 1)
+        deg = per_deg * direction
         # if dn is not None:
         #     if max(deg, dn) - min(deg, dn) < 180:
         #         deg = deg * ema + dn * (1 - ema)
@@ -887,7 +900,7 @@ def connect_by_step(coords, direction_mask, sorted_points, taken_direction, step
         vector_to_next = coords[idx] - last_point
         deg = np.rad2deg(math.atan2(vector_to_next[1], vector_to_next[0]))
         inverse_deg = (180 + deg) % 360
-        target_direction = per_deg * (direction_mask[tuple(np.flip(sorted_points[-1]))] - 1)
+        target_direction = per_deg * direction_mask[tuple(np.flip(sorted_points[-1]))]
         tmp = np.abs(target_direction - inverse_deg)
         tmp = torch.min(tmp, 360 - tmp)
         taken = np.argmin(tmp)
